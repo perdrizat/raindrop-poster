@@ -148,7 +148,7 @@ const SetupPage = () => {
                             value={selectedTag}
                             onChange={(e) => setSelectedTag(e.target.value)}
                             disabled={!connections.raindropio || tags.length === 0}
-                            className="block w-full rounded-md border-gray-300 dark:border-gray-700 py-2.5 pl-3 pr-10 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-black dark:text-white disabled:opacity-50 transition-colors duration-200"
+                            className="block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2.5 pl-3 pr-10 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-black dark:text-white disabled:opacity-50 transition-colors duration-200"
                         >
                             {!connections.raindropio && <option value="">Connect Raindrop first...</option>}
                             {connections.raindropio && tags.length === 0 && <option value="">Loading tools...</option>}
@@ -177,7 +177,7 @@ const SetupPage = () => {
                         value={objectives}
                         onChange={(e) => setObjectives(e.target.value)}
                         placeholder="E.g., Propose engaging Twitter posts that help me increase my follower count..."
-                        className="block w-full rounded-md border-gray-300 dark:border-gray-700 py-3 px-4 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-black dark:text-white transition-colors duration-200 resize-y"
+                        className="block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-3 px-4 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-black dark:text-white transition-colors duration-200 resize-y"
                     />
                 </div>
             </section>
