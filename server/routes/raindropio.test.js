@@ -89,5 +89,35 @@ describe('Raindrop API Routes', () => {
             });
         });
     });
+    describe('GET /api/raindropio/raindrops/0', () => {
+        it('should return 401 if user is not authenticated with Raindrop', async () => {
+            const res = await request(app).get('/api/raindropio/raindrops/0');
+            expect(res.status).toBe(401);
+            expect(res.body).toEqual({ error: 'Not authenticated with Raindrop' });
+        });
+
+        it('should return success and items array if token is valid', async () => {
+            const mockItems = [{ _id: 1, title: 'Test Article', link: 'https://example.com' }];
+            axios.get.mockResolvedValueOnce({
+                data: {
+                    items: mockItems
+                }
+            });
+
+            const res = await request(app)
+                .get('/api/raindropio/raindrops/0')
+                .query({ search: '[{"key":"tag","val":"to-tweet"}]' })
+                .set('Authorization', 'Bearer mock-rd-token');
+
+            expect(res.status).toBe(200);
+            expect(res.body).toEqual({
+                success: true,
+                items: mockItems
+            });
+            expect(axios.get).toHaveBeenCalledWith('https://api.raindrop.io/rest/v1/raindrops/0?search=[{"key":"tag","val":"to-tweet"}]', {
+                headers: { Authorization: 'Bearer mock-rd-token' }
+            });
+        });
+    });
 });
 

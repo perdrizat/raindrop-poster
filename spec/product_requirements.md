@@ -164,7 +164,7 @@ As a Content Curator, I want to save all my settings (OAuth tokens, tag, and cus
 
 ---
 
-### **Epic 2: Content Ingestion & Curation**
+### **Epic 2 (Complete): Content Ingestion & Curation**
 This backlog covers the functionality required to fetch articles from Raindrop.io and allow the user to navigate their content queue.
 
 **Story 1: Fetch Content Queue**
@@ -224,7 +224,7 @@ As a Content Curator, I want to manually reload my content queue, so that I can 
 
 ---
 
-### **Epic 3: AI-Powered Content Generation**
+### **Epic 3 (In Progress): AI-Powered Content Generation**
 This backlog covers the functionality required to use the Venice.ai LLM to generate tweet proposals based on the user's content.
 
 **Story 1: Generate Proposals Automatically**

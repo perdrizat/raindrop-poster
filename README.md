@@ -31,8 +31,8 @@ This spins up the Vite dev server (frontend) and the Express backend on port 300
 Development is organized into six epics. We are actively working through them:
 
 * **Epic 1 (Complete): User Setup & Configuration:** Authenticate with external services via OAuth and define custom AI posting objectives.
-* **Epic 2 (In Progress): Content Ingestion & Curation:** Fetch and navigate an article queue from Raindrop.io based on tags.
-* **Epic 3: AI-Powered Content Generation:** Leverage the Venice LLM to automatically generate tweet proposals.
+* **Epic 2 (Complete): Content Ingestion & Curation:** Fetch and navigate an article queue from Raindrop.io based on tags.
+* **Epic 3 (In Progress): AI-Powered Content Generation:** Leverage the Venice LLM to automatically generate tweet proposals.
 * **Epic 4: Publishing Workflow:** Preview proposals and publish threads directly to Twitter/X.
 * **Epic 5: Post-Publish Queue Management:** Automatically clear processed tags in Raindrop.io.
 * **Epic 6: Core Application & Deployment:** Security auditing and Docker containerization.

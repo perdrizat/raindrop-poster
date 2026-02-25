@@ -14,3 +14,23 @@ export const fetchTags = async () => {
         return [];
     }
 };
+
+export const fetchTaggedItems = async (tag) => {
+    try {
+        console.log(`Fetching items for tag "${tag}" from backend...`);
+        // The API expects URL encoded JSON search string
+        const searchString = encodeURIComponent(`[{"key":"tag","val":"${tag}"}]`);
+        const response = await fetch(`/api/raindropio/raindrops/0?search=${searchString}`);
+        const data = await response.json();
+
+        if (!response.ok || !data.success || !data.items) {
+            console.error("fetchTaggedItems failed:", data.error || 'Unknown error');
+            return [];
+        }
+
+        return data.items;
+    } catch (err) {
+        console.error("Error fetching tagged items:", err);
+        return [];
+    }
+};

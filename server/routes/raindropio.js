@@ -43,4 +43,27 @@ router.get('/tags', async (req, res) => {
     }
 });
 
+// --- FETCH TAGGED ITEMS ---
+router.get('/raindrops/0', async (req, res) => {
+    try {
+        if (!req.session.raindropio || !req.session.raindropio.accessToken) {
+            return res.status(401).json({ error: 'Not authenticated with Raindrop' });
+        }
+
+        const queryParams = req.query.search ? `?search=${req.query.search}` : '';
+        const url = `https://api.raindrop.io/rest/v1/raindrops/0${queryParams}`;
+
+        const response = await axios.get(url, {
+            headers: {
+                Authorization: `Bearer ${req.session.raindropio.accessToken}`
+            }
+        });
+
+        res.json({ success: true, items: response.data.items });
+    } catch (error) {
+        console.error('Raindrop API Items Error:', error.response?.data || error.message);
+        res.status(502).json({ error: 'Failed to fetch items from Raindrop API' });
+    }
+});
+
 export default router;
