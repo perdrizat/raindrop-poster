@@ -1,20 +1,40 @@
 # Raindrop Poster
 
+> **Note:** This project is a work in progress (WIP) and is currently being built as an experiment with Antigravity.
+
 Raindrop Poster is a web application designed to streamline the social media workflow for heavy content curators. It provides a simple, consolidated, and mobile-friendly workflow to turn your saved bookmarks in Raindrop.io into engaging, AI-generated Twitter/X threads without the need to switch between multiple applications. 
 
-Built on a hybrid architecture, the project features a snappy React (Vite) frontend for the core user experience, powered by a minimal Node.js (Express) backend that securely handles OAuth flows, fetches article content, and proxies generation requests to Venice.ai.
+## Architecture & Setup
 
-## Project Structure & Roadmap
+The project uses a hybrid architecture:
+- **Frontend (`client/`):** React SPA (Vite) handling UI, state, and workflows.
+- **Backend (`server/`):** A lightweight Node.js/Express proxy that manages secure OAuth flows (Twitter, Raindrop), hides the Venice AI API key, and bypasses CORS.
 
-Development is organized into six major epics:
+### Getting Started
 
-* **Epic 1: User Setup & Configuration:** Authenticate with external services (Raindrop.io, Twitter/X) via OAuth and define custom AI posting objectives.
-* **Epic 2: Content Ingestion & Curation:** Fetch and navigate a queue of articles directly from Raindrop.io based on a specified tag.
-* **Epic 3: AI-Powered Content Generation:** Leverage the Venice.ai LLM to automatically generate multiple tweet proposals based on scraped article content.
-* **Epic 4: Publishing Workflow:** Preview the selected AI proposal and publish the thread directly to your Twitter/X timeline.
-* **Epic 5: Post-Publish Queue Management:** Automatically update tags in Raindrop.io to mark articles as "posted", keeping your content queue clean.
-* **Epic 6: Core Application & Deployment:** Backend/frontend scaffolding, security auditing, and Docker containerization.
+You must run both the backend and frontend concurrently for the system to work:
 
-For a comprehensive look at the functional requirements, user stories, and technical details, please refer to the project specification documents:
-* Detailed [Product Requirements Document](spec/product_requirements.md)
-* Technical [System Architecture](spec/system_architecture.md)
+```bash
+# First, install all dependencies across the project
+npm install
+(cd client && npm install)
+(cd server && npm install)
+
+# Then, start both the frontend and backend servers concurrently
+npm run dev
+```
+
+This spins up the Vite dev server (frontend) and the Express backend on port 3001. All sensitive keys are managed by the backend `.env` file; the frontend requires no secrets.
+
+## Project Roadmap
+
+Development is organized into six epics. We are actively working through them:
+
+* **Epic 1 (Complete): User Setup & Configuration:** Authenticate with external services via OAuth and define custom AI posting objectives.
+* **Epic 2 (In Progress): Content Ingestion & Curation:** Fetch and navigate an article queue from Raindrop.io based on tags.
+* **Epic 3: AI-Powered Content Generation:** Leverage the Venice LLM to automatically generate tweet proposals.
+* **Epic 4: Publishing Workflow:** Preview proposals and publish threads directly to Twitter/X.
+* **Epic 5: Post-Publish Queue Management:** Automatically clear processed tags in Raindrop.io.
+* **Epic 6: Core Application & Deployment:** Security auditing and Docker containerization.
+
+For comprehensive functional requirements and technical details, see the [Product Requirements](spec/product_requirements.md) and [System Architecture](spec/system_architecture.md).
