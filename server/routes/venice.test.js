@@ -7,6 +7,7 @@ import axios from 'axios';
 vi.mock('axios');
 
 const app = express();
+app.use(express.json());
 app.use('/api/venice', veniceRoutes);
 
 describe('Venice API Routes', () => {
@@ -38,6 +39,47 @@ describe('Venice API Routes', () => {
             expect(axios.get).toHaveBeenCalledWith('https://api.venice.ai/api/v1/models', {
                 headers: { Authorization: 'Bearer mock-venice-key' }
             });
+        });
+    });
+
+    describe('POST /api/venice/generate', () => {
+        it('should return 400 if article text is missing', async () => {
+            process.env.VENICE_API_KEY = 'mock';
+            const res = await request(app).post('/api/venice/generate').send({ prompt: 'Test' });
+            expect(res.status).toBe(400);
+            expect(res.body).toEqual({ error: 'Article text is required' });
+        });
+
+        it('should successfully prompt Venice and return proposals within JSON structure', async () => {
+            process.env.VENICE_API_KEY = 'mock-venice-key';
+
+            axios.post.mockResolvedValueOnce({
+                data: {
+                    choices: [
+                        { message: { content: '{"proposals":["Tweet 1","Tweet 2","Tweet 3"]}' } }
+                    ]
+                }
+            });
+
+            const reqBody = {
+                articleText: 'Mock article text.',
+                prompt: 'Custom user prompt',
+                metadata: { title: 'Test', url: 'http://test.com' }
+            };
+
+            const res = await request(app).post('/api/venice/generate').send(reqBody);
+
+            expect(res.status).toBe(200);
+            expect(res.body.proposals).toHaveLength(3);
+            expect(axios.post).toHaveBeenCalledWith('https://api.venice.ai/api/v1/chat/completions', expect.any(Object), expect.any(Object));
+        });
+
+        it('should handle API errors gracefully', async () => {
+            process.env.VENICE_API_KEY = 'mock';
+            axios.post.mockRejectedValueOnce(new Error('Venice error'));
+
+            const res = await request(app).post('/api/venice/generate').send({ articleText: 'text' });
+            expect(res.status).toBe(502);
         });
     });
 });
