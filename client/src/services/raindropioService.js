@@ -28,7 +28,15 @@ export const fetchTaggedItems = async (tag) => {
             return [];
         }
 
-        return data.items;
+        return data.items.map(item => {
+            if ((!item.highlights || item.highlights.length === 0) && item.note) {
+                return {
+                    ...item,
+                    highlights: [{ text: item.note }]
+                };
+            }
+            return item;
+        });
     } catch (err) {
         console.error("Error fetching tagged items:", err);
         return [];

@@ -66,7 +66,7 @@ const PublishPage = ({ selectedTag, onSelectProposal }) => {
     const header = (
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4 border-b border-gray-200 dark:border-gray-800 pb-4">
             <div>
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Publish Queue: {selectedTag}</h2>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Queue: {selectedTag}</h2>
             </div>
             {articles.length > 0 && (
                 <div className="text-sm font-medium text-gray-500 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">
