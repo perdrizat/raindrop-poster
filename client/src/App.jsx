@@ -1,12 +1,24 @@
 import React, { useState } from 'react'
 import SetupPage from './pages/SetupPage'
 import PublishPage from './pages/PublishPage'
+import ConfirmationPage from './pages/ConfirmationPage'
 import ThemeToggle from './components/ThemeToggle'
 import { loadSettings } from './services/settingsService'
 
 function App() {
   const [activeView, setActiveView] = useState('setup')
+  const [confirmationData, setConfirmationData] = useState(null)
   const settings = loadSettings()
+
+  const handleSelectProposal = (proposal, article) => {
+    setConfirmationData({ proposal, article })
+    setActiveView('confirmation')
+  }
+
+  const handleBackFromConfirmation = () => {
+    setActiveView('publish')
+    setConfirmationData(null)
+  }
 
   return (
     <div className="min-h-screen flex flex-col items-center py-10 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
@@ -40,12 +52,21 @@ function App() {
       </header>
 
       <main className="w-full max-w-4xl">
-        {activeView === 'setup' ? (
-          <SetupPage />
-        ) : (
+        {activeView === 'setup' && <SetupPage />}
+
+        {activeView === 'publish' && (
           <PublishPage
             selectedTag={settings.selectedTag}
-            onBack={() => setActiveView('setup')}
+            onSelectProposal={handleSelectProposal}
+          />
+        )}
+
+        {activeView === 'confirmation' && confirmationData && (
+          <ConfirmationPage
+            proposal={confirmationData.proposal}
+            article={confirmationData.article}
+            objectives={settings.postingObjectives}
+            onBack={handleBackFromConfirmation}
           />
         )}
       </main>

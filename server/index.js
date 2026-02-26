@@ -7,6 +7,7 @@ import authRoutes from './routes/auth.js';
 import raindropioRoutes from './routes/raindropio.js';
 import veniceRoutes from './routes/venice.js';
 import scrapeRoutes from './routes/scrape.js';
+import publishRoutes from './routes/publish.js';
 
 // Load env vars
 dotenv.config();
@@ -43,6 +44,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/raindropio', raindropioRoutes);
 app.use('/api/venice', veniceRoutes);
 app.use('/api/scrape', scrapeRoutes);
+app.use('/api/publish', publishRoutes);
 
 // Basic health check endpoint
 app.get('/api/health', (req, res) => {

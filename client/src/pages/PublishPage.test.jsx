@@ -119,7 +119,7 @@ describe('PublishPage', () => {
         expect(screen.getByText(/Generating proposals.../i)).toBeInTheDocument();
 
         // Resolve to clean up
-        resolveGen(['Prop 1', 'Prop 2', 'Prop 3']);
+        resolveGen({ proposals: ['Prop 1', 'Prop 2', 'Prop 3'], author: null });
         await waitFor(() => {
             expect(screen.queryByText(/Generating proposals.../i)).not.toBeInTheDocument();
         });
@@ -127,7 +127,7 @@ describe('PublishPage', () => {
 
     it('displays generated proposals successfully', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
-        generateProposals.mockResolvedValueOnce(['First awesome tweet!', 'Second highly engaging thread.', 'Third short hook.']);
+        generateProposals.mockResolvedValueOnce({ proposals: ['First awesome tweet!', 'Second highly engaging thread.', 'Third short hook.'], author: null });
 
         render(<PublishPage selectedTag="testing" onBack={() => { }} />);
 
@@ -152,7 +152,7 @@ describe('PublishPage', () => {
         });
 
         // Click retry
-        generateProposals.mockResolvedValueOnce(['Retried tweet']);
+        generateProposals.mockResolvedValueOnce({ proposals: ['Retried tweet'], author: null });
         await user.click(screen.getByRole('button', { name: /Retry Generation/i }));
 
         await waitFor(() => {
@@ -161,7 +161,7 @@ describe('PublishPage', () => {
     });
     it('passes custom posting objectives from localStorage to aiService', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
-        generateProposals.mockResolvedValueOnce(['Test proposal']);
+        generateProposals.mockResolvedValueOnce({ proposals: ['Test proposal'], author: null });
 
         // Hydrate localStorage with custom settings using the CORRECT key
         window.localStorage.setItem('raindrop_publisher_settings', JSON.stringify({

@@ -3,12 +3,13 @@ import { fetchTaggedItems } from '../services/raindropioService';
 import { generateProposals } from '../services/aiService';
 import { loadSettings } from '../services/settingsService';
 
-const PublishPage = ({ selectedTag }) => {
+const PublishPage = ({ selectedTag, onSelectProposal }) => {
     const [articles, setArticles] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isGenerating, setIsGenerating] = useState(false);
     const [proposals, setProposals] = useState([]);
+    const [extractedAuthor, setExtractedAuthor] = useState(null);
     const [generationError, setGenerationError] = useState(null);
 
     const currentArticle = articles.length > 0 && currentIndex >= 0 && currentIndex < articles.length
@@ -25,7 +26,8 @@ const PublishPage = ({ selectedTag }) => {
             const customPrompt = settings.postingObjectives || 'Create engaging tweets.';
 
             const results = await generateProposals(article, customPrompt);
-            setProposals(results || []);
+            setProposals(results.proposals || []);
+            setExtractedAuthor(results.author || null);
         } catch (error) {
             setGenerationError(error.message || 'Failed to generate proposals.');
         } finally {
@@ -184,8 +186,11 @@ const PublishPage = ({ selectedTag }) => {
                                     <p className="text-gray-800 dark:text-gray-200 pl-8 whitespace-pre-wrap leading-relaxed">{proposal}</p>
 
                                     <div className="mt-4 pl-8 flex justify-end">
-                                        <button disabled className="text-sm font-medium text-blue-600 dark:text-blue-400 disabled:opacity-50 cursor-not-allowed">
-                                            Publish Thread (Epic 4)
+                                        <button
+                                            onClick={() => onSelectProposal(proposal, { ...currentArticle, extractedAuthor })}
+                                            className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
+                                        >
+                                            Review & Publish Thread
                                         </button>
                                     </div>
                                 </div>

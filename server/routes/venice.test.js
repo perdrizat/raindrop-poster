@@ -56,7 +56,7 @@ describe('Venice API Routes', () => {
             axios.post.mockResolvedValueOnce({
                 data: {
                     choices: [
-                        { message: { content: '{"proposals":["Tweet 1","Tweet 2","Tweet 3"]}' } }
+                        { message: { content: '{"proposals":["Tweet 1","Tweet 2","Tweet 3"], "author":"Jane Doe"}' } }
                     ]
                 }
             });
@@ -71,6 +71,7 @@ describe('Venice API Routes', () => {
 
             expect(res.status).toBe(200);
             expect(res.body.proposals).toHaveLength(3);
+            expect(res.body.author).toBe('Jane Doe');
             expect(axios.post).toHaveBeenCalledWith('https://api.venice.ai/api/v1/chat/completions', expect.any(Object), expect.any(Object));
         });
 

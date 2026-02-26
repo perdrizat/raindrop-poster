@@ -39,14 +39,25 @@ router.post('/generate', async (req, res) => {
             return res.status(400).json({ error: 'Article text is required' });
         }
 
-        const systemPrompt = `You are an expert Ghostwriter and Social Media Manager for a tech-savvy creator. Your task is to write 3 distinct, highly engaging Twitter post options based on the provided article text.
+        let systemPrompt = '';
+
+        if (metadata?.isHighlightSelection) {
+            systemPrompt = `You are an expert editor for a tech-savvy creator. Your task is to pick the single most engaging highlight from the provided list based on the user's objectives.
+You MUST output your response in STRICT JSON format exactly like this:
+{
+  "highlight": "The exact text of the chosen highlight without surrounding quotes"
+}
+Return only the raw JSON.`;
+        } else {
+            systemPrompt = `You are an expert Ghostwriter and Social Media Manager for a tech-savvy creator. Your task is to write 3 distinct, highly engaging Twitter post options based on the provided article text.
 
 CRITICAL INSTRUCTIONS:
 1. The user's specific "User Instructions (Objectives)" take absolute precedence over everything else regarding tone, style, and constraints.
 2. The proposals should be loosely based on the provided Highlights, utilizing the full Article Text for context.
 3. Keep each tweet option concise and punchy (aim for 150-240 characters).
 4. Do not sound like a bot. Avoid generic marketing speak ("In today's fast-paced world...").
-5. Use emojis sparingly (maximum 1 across all tweet3) unless the user requests otherwise.
+5. Use emojis sparingly (maximum 1 across all options) unless the user requests otherwise.
+6. Also extract the Author's name from the Article Text. If you cannot find one, set it to null.
 
 Provide 3 distinct options using these specific archetypes to give the user variety:
 - Option 1 (The Insightful Hook): Focus on the core value, a surprising fact, or the "Aha!" moment from the article. Tone: Educational, helpful, authoritative.
@@ -59,10 +70,12 @@ You MUST output your response in STRICT JSON format exactly like this:
     "Option 1 text here...",
     "Option 2 text here...",
     "Option 3 text here..."
-  ]
+  ],
+  "author": "John Doe"
 }
 
-Ensure you provide exactly 3 proposals in the JSON array. Do not include markdown blocks like \`\`\`json. Return only the raw JSON.`;
+Ensure you provide exactly 3 proposals in the JSON array AND the extracted author. Do not include markdown blocks like \`\`\`json. Return only the raw JSON.`;
+        }
 
         const userPrompt = `
 Metadata:
@@ -136,7 +149,11 @@ ${articleText.substring(0, 100).replace(/\\n/g, ' ')}... [TRUNCATED ${articleTex
             }
         }
 
-        res.json({ proposals: parsed.proposals });
+        if (metadata?.isHighlightSelection) {
+            res.json({ highlight: parsed.highlight });
+        } else {
+            res.json({ proposals: parsed.proposals, author: parsed.author });
+        }
     } catch (error) {
         console.error('Venice API Generate Error:', error.response?.data || error.message);
         res.status(502).json({ error: 'Failed to generate content with Venice AI API' });
