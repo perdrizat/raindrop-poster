@@ -140,13 +140,13 @@ describe('Auth Routes', () => {
             expect(res.body).toEqual({ error: 'Not authenticated with Buffer' });
         });
 
-        it('should return channel count if Buffer token is valid', async () => {
+        it('should return channel details if Buffer token is valid', async () => {
             axios.post.mockResolvedValueOnce({
                 data: {
                     data: {
                         channels: [
-                            { id: 'profile1', service: 'twitter' },
-                            { id: 'profile2', service: 'linkedin' }
+                            { id: 'profile1', service: 'twitter', name: '@mockUser' },
+                            { id: 'profile2', service: 'linkedin', name: 'Mock User' }
                         ]
                     }
                 }
@@ -155,7 +155,13 @@ describe('Auth Routes', () => {
             const res = await request(app).get('/api/auth/buffer/test');
 
             expect(res.status).toBe(200);
-            expect(res.body).toEqual({ success: true, channelCount: 2 });
+            expect(res.body).toEqual({
+                success: true,
+                channels: [
+                    { id: 'profile1', service: 'twitter', name: '@mockUser' },
+                    { id: 'profile2', service: 'linkedin', name: 'Mock User' }
+                ]
+            });
             expect(axios.post).toHaveBeenCalledWith('https://api.buffer.com/1/graphql', expect.objectContaining({
                 query: expect.stringContaining('query GetChannels')
             }), {

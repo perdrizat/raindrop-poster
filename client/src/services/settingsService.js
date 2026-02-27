@@ -22,7 +22,8 @@ export const loadSettings = () => {
                 },
                 selectedTag: '',
                 postingObjectives: 'Propose engaging Twitter posts that help me increase my follower count',
-                publishDestination: 'twitter'
+                publishDestination: 'twitter',
+                bufferChannels: []
             };
         }
         const parsed = JSON.parse(serialized);
@@ -30,6 +31,9 @@ export const loadSettings = () => {
         // Ensure defaults for any new properties not present in old saves
         if (parsed && !parsed.publishDestination) {
             parsed.publishDestination = 'twitter';
+        }
+        if (parsed && !parsed.bufferChannels) {
+            parsed.bufferChannels = [];
         }
 
         return parsed;
@@ -42,7 +46,8 @@ export const loadSettings = () => {
             },
             selectedTag: '',
             postingObjectives: 'Propose engaging Twitter posts that help me increase my follower count',
-            publishDestination: 'twitter'
+            publishDestination: 'twitter',
+            bufferChannels: []
         };
     }
 };

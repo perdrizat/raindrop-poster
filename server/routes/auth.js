@@ -54,6 +54,7 @@ router.get('/buffer/test', async (req, res) => {
                 channels(input: $input) {
                     id
                     service
+                    name
                 }
             }
         `;
@@ -76,7 +77,7 @@ router.get('/buffer/test', async (req, res) => {
             return res.status(502).json({ error: response.data.errors[0].message });
         }
 
-        res.json({ success: true, channelCount: response.data.data.channels.length });
+        res.json({ success: true, channels: response.data.data.channels });
     } catch (error) {
         const errMsg = error.response?.status === 500
             ? 'Buffer API returned 500. Your token might be deactivated or invalid.'

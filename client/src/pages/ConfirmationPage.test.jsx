@@ -85,7 +85,8 @@ describe('ConfirmationPage', () => {
         expect(publishThread).toHaveBeenCalledWith(
             expect.stringContaining("This is my generated tweet proposal"),
             expect.stringContaining("Testing React Hooks"),
-            'twitter'
+            'twitter',
+            []
         );
 
         // Wait for success message
@@ -95,7 +96,7 @@ describe('ConfirmationPage', () => {
     });
 
     it('calls publishThread with buffer destination when set in settings', async () => {
-        loadSettings.mockReturnValue({ publishDestination: 'buffer' });
+        loadSettings.mockReturnValue({ publishDestination: 'buffer', bufferChannels: ['linkedln-1'] });
 
         publishThread.mockResolvedValueOnce({ success: true, url: "https://buffer.com/update/1" });
 
@@ -107,7 +108,8 @@ describe('ConfirmationPage', () => {
         expect(publishThread).toHaveBeenCalledWith(
             expect.stringContaining("This is my generated tweet proposal"),
             expect.stringContaining("Testing React Hooks"),
-            'buffer'
+            'buffer',
+            ['linkedln-1']
         );
 
         await waitFor(() => {

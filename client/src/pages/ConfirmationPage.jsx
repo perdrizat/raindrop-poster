@@ -12,6 +12,7 @@ const ConfirmationPage = ({ proposal, article, objectives, onBack }) => {
     const [publishSuccessData, setPublishSuccessData] = useState(null);
     const destination = loadSettings().publishDestination === 'buffer' ? 'Buffer' : 'X (Twitter)';
     const destinationId = loadSettings().publishDestination || 'twitter';
+    const bufferChannels = loadSettings().bufferChannels || [];
 
     useEffect(() => {
         const determineTweet2 = async () => {
@@ -51,7 +52,7 @@ const ConfirmationPage = ({ proposal, article, objectives, onBack }) => {
         setIsPublishing(true);
         setPublishError(null);
         try {
-            const result = await publishThread(tweet1Content, tweet2Content, destinationId);
+            const result = await publishThread(tweet1Content, tweet2Content, destinationId, bufferChannels);
             setPublishSuccessData(result);
         } catch (error) {
             setPublishError(error.message || 'Failed to publish thread');

@@ -44,6 +44,19 @@ beforeAll(() => {
                 });
             }
 
+            if (url === '/api/auth/buffer/test') {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        success: true,
+                        channels: [
+                            { id: '123', service: 'twitter', name: '@mock_x' },
+                            { id: '456', service: 'linkedin', name: 'Mock LinkedIn' }
+                        ]
+                    })
+                });
+            }
+
             if (url === '/api/raindropio/tags' && mockRaindropConnection) {
                 return Promise.resolve({
                     ok: true,
@@ -280,5 +293,34 @@ describe('SetupPage against REAL backend', () => {
             const missingTwitterBtn = document.querySelector('button[title*="API Connection with X (Twitter)"]');
             expect(missingTwitterBtn).not.toBeInTheDocument();
         });
+    });
+
+    it('displays multiple Buffer channels as checkboxes and saves them', async () => {
+        render(<SetupPage />);
+        const destSelect = await screen.findByLabelText(/Publish Destination/i);
+        fireEvent.change(destSelect, { target: { value: 'buffer' } });
+
+        // Wait for connection to establish and channels to load from the mock fetch
+        await waitFor(() => {
+            expect(screen.getByText('Connected to Buffer.com')).toBeInTheDocument();
+            expect(screen.getByLabelText(/twitter: @mock_x/i)).toBeInTheDocument();
+            expect(screen.getByLabelText(/linkedin: Mock LinkedIn/i)).toBeInTheDocument();
+        }, { timeout: 3000 });
+
+        // Select the linkedin channel
+        const linkedinCheckbox = screen.getByLabelText(/linkedin: Mock LinkedIn/i);
+        fireEvent.click(linkedinCheckbox);
+
+        // Save
+        const saveButton = screen.getByText('Save Configuration');
+        fireEvent.click(saveButton);
+
+        // Verify Storage
+        await waitFor(() => {
+            expect(screen.getByText('Settings saved securely!')).toBeInTheDocument();
+        });
+
+        const saved = JSON.parse(window.localStorage.getItem('raindrop_publisher_settings'));
+        expect(saved.bufferChannels).toContain('456');
     });
 });

@@ -91,16 +91,13 @@ describe('POST /api/publish', () => {
         expect(response.body.error).toMatch(/Buffer credentials not configured/i);
     });
 
-    it('should call Buffer API channels then twice to publish thread and return success', async () => {
+    it('should iterate over targetChannels and execute createPost for each tweet per channel', async () => {
         process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
         process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
 
         axios.post.mockImplementation((url, data) => {
-            if (data.query.includes('GetChannels')) {
-                return Promise.resolve({ data: { data: { channels: [{ id: 'mock-channel-id' }] } } });
-            }
             if (data.query.includes('CreatePost')) {
-                return Promise.resolve({ data: { data: { createPost: { post: { id: 'mock-post-id' } } } } });
+                return Promise.resolve({ data: { data: { createPost: { post: { id: `mock-post-id-${Date.now()}` } } } } });
             }
             return Promise.resolve({ data: {} });
         });
@@ -111,43 +108,30 @@ describe('POST /api/publish', () => {
 
         const response = await request(testApp)
             .post('/api/publish')
-            .send({ tweet1: 'Test Tweet 1', tweet2: 'Test Tweet 2', destination: 'buffer' });
+            .send({
+                tweet1: 'Test Tweet 1',
+                tweet2: 'Test Tweet 2',
+                destination: 'buffer',
+                targetChannels: ['colombia', 'argentina']
+            });
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
         expect(response.body.url).toMatch(/buffer\.com/i);
+        expect(response.body.message).toMatch(/Published to 2 channel\(s\)/i);
 
-        expect(axios.post).toHaveBeenCalledTimes(3);
+        // 2 tweets * 2 channels = 4 calls total. 
+        expect(axios.post).toHaveBeenCalledTimes(4);
 
-        // Assert Channels payload (GraphQL)
+        // Assert Channel 1, Tweet 1
         expect(axios.post).toHaveBeenNthCalledWith(
             1,
-            'https://api.buffer.com/1/graphql',
-            expect.objectContaining({
-                query: expect.stringContaining('query GetChannels'),
-                variables: expect.objectContaining({
-                    input: expect.objectContaining({
-                        organizationId: 'mock-profile-id'
-                    })
-                })
-            }),
-            expect.objectContaining({
-                headers: expect.objectContaining({
-                    Authorization: 'Bearer mock-buffer-token',
-                    'Content-Type': 'application/json'
-                })
-            })
-        );
-
-        // Assert first tweet payload (GraphQL)
-        expect(axios.post).toHaveBeenNthCalledWith(
-            2,
             'https://api.buffer.com/1/graphql',
             expect.objectContaining({
                 query: expect.stringContaining('mutation CreatePost'),
                 variables: expect.objectContaining({
                     input: expect.objectContaining({
-                        channelId: 'mock-channel-id',
+                        channelId: 'colombia',
                         text: 'Test Tweet 1',
                         schedulingType: 'automatic',
                         mode: 'shareNext'
@@ -157,14 +141,44 @@ describe('POST /api/publish', () => {
             expect.objectContaining({ headers: expect.objectContaining({ 'Content-Type': 'application/json' }) })
         );
 
-        // Assert second tweet payload
+        // Assert Channel 1, Tweet 2
+        expect(axios.post).toHaveBeenNthCalledWith(
+            2,
+            'https://api.buffer.com/1/graphql',
+            expect.objectContaining({
+                variables: expect.objectContaining({
+                    input: expect.objectContaining({
+                        channelId: 'colombia',
+                        text: 'Test Tweet 2'
+                    })
+                })
+            }),
+            expect.objectContaining({ headers: expect.objectContaining({ 'Content-Type': 'application/json' }) })
+        );
+
+        // Assert Channel 2, Tweet 1
         expect(axios.post).toHaveBeenNthCalledWith(
             3,
             'https://api.buffer.com/1/graphql',
             expect.objectContaining({
                 variables: expect.objectContaining({
                     input: expect.objectContaining({
-                        channelId: 'mock-channel-id',
+                        channelId: 'argentina',
+                        text: 'Test Tweet 1'
+                    })
+                })
+            }),
+            expect.objectContaining({ headers: expect.objectContaining({ 'Content-Type': 'application/json' }) })
+        );
+
+        // Assert Channel 2, Tweet 2
+        expect(axios.post).toHaveBeenNthCalledWith(
+            4,
+            'https://api.buffer.com/1/graphql',
+            expect.objectContaining({
+                variables: expect.objectContaining({
+                    input: expect.objectContaining({
+                        channelId: 'argentina',
                         text: 'Test Tweet 2'
                     })
                 })

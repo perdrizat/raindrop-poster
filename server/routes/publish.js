@@ -14,39 +14,15 @@ router.post('/', async (req, res) => {
         }
 
         if (destination === 'buffer') {
+            const { targetChannels } = req.body;
+
             if (!process.env.BUFFER_ACCESS_TOKEN || !process.env.BUFFER_PROFILE_ID) {
                 return res.status(401).json({ error: 'Buffer credentials not configured' });
             }
 
-            // 1. Fetch channels to get the channel ID
-            const queryChannels = `
-                query GetChannels($input: ChannelsInput!) {
-                    channels(input: $input) {
-                        id
-                    }
-                }
-            `;
-            const channelsRes = await axios.post('https://api.buffer.com/1/graphql', {
-                query: queryChannels,
-                variables: {
-                    input: { organizationId: process.env.BUFFER_PROFILE_ID }
-                }
-            }, {
-                headers: {
-                    'Authorization': `Bearer ${process.env.BUFFER_ACCESS_TOKEN}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (channelsRes.data.errors) {
-                return res.status(502).json({ error: channelsRes.data.errors[0].message });
+            if (!targetChannels || !Array.isArray(targetChannels) || targetChannels.length === 0) {
+                return res.status(400).json({ error: 'No target channels selected for Buffer.' });
             }
-
-            const channels = channelsRes.data?.data?.channels;
-            if (!channels || channels.length === 0) {
-                return res.status(404).json({ error: 'No Buffer channels found for this organization.' });
-            }
-            const targetChannelId = channels[0].id;
 
             const query = `
                 mutation CreatePost($input: CreatePostInput!) {
@@ -62,51 +38,79 @@ router.post('/', async (req, res) => {
                 }
             `;
 
-            // Post the first idea
-            const res1 = await axios.post('https://api.buffer.com/1/graphql', {
-                query,
-                variables: {
-                    input: {
-                        channelId: targetChannelId,
-                        text: tweet1,
-                        schedulingType: "automatic",
-                        mode: "shareNext"
-                    }
-                }
-            }, {
-                headers: {
-                    'Authorization': `Bearer ${process.env.BUFFER_ACCESS_TOKEN}`,
-                    'Content-Type': 'application/json'
-                }
-            });
+            let successCount = 0;
+            const errors = [];
 
-            if (res1.data.errors) {
-                return res.status(502).json({ error: res1.data.errors[0].message });
+            for (const channelId of targetChannels) {
+                try {
+                    // Post the first idea
+                    const res1 = await axios.post('https://api.buffer.com/1/graphql', {
+                        query,
+                        variables: {
+                            input: {
+                                channelId: channelId,
+                                text: tweet1,
+                                schedulingType: "automatic",
+                                mode: "shareNext"
+                            }
+                        }
+                    }, {
+                        headers: {
+                            'Authorization': `Bearer ${process.env.BUFFER_ACCESS_TOKEN}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (res1.data.errors) {
+                        errors.push(`Channel ${channelId}: ${res1.data.errors[0].message}`);
+                        continue; // Skip the second tweet for this channel if the first fails
+                    }
+
+                    // Post the second idea
+                    const res2 = await axios.post('https://api.buffer.com/1/graphql', {
+                        query,
+                        variables: {
+                            input: {
+                                channelId: channelId,
+                                text: tweet2,
+                                schedulingType: "automatic",
+                                mode: "shareNext"
+                            }
+                        }
+                    }, {
+                        headers: {
+                            'Authorization': `Bearer ${process.env.BUFFER_ACCESS_TOKEN}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (res2.data.errors) {
+                        errors.push(`Channel ${channelId} (Tweet 2): ${res2.data.errors[0].message}`);
+                        continue;
+                    }
+
+                    successCount++;
+                } catch (e) {
+                    console.error(`Error posting to channel ${channelId}:`, e.message);
+                    errors.push(`Channel ${channelId} threw an exception.`);
+                }
             }
 
-            // Post the second idea
-            const res2 = await axios.post('https://api.buffer.com/1/graphql', {
-                query,
-                variables: {
-                    input: {
-                        channelId: targetChannelId,
-                        text: tweet2,
-                        schedulingType: "automatic",
-                        mode: "shareNext"
-                    }
-                }
-            }, {
-                headers: {
-                    'Authorization': `Bearer ${process.env.BUFFER_ACCESS_TOKEN}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (res2.data.errors) {
-                return res.status(502).json({ error: res2.data.errors[0].message });
+            if (successCount === 0) {
+                return res.status(502).json({
+                    error: `Failed to publish to Buffer. Errors: ${errors.join(' | ')}`
+                });
             }
 
-            return res.json({ success: true, url: 'https://publish.buffer.com/create' });
+            if (errors.length > 0) {
+                console.warn(`Buffer multi-post completed with partial failures:`, errors);
+            }
+
+            return res.json({
+                success: true,
+                url: 'https://publish.buffer.com/all-channels',
+                message: `Published to ${successCount} channel(s)`
+            });
 
         } else {
             // Default to Twitter

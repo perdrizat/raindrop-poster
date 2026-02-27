@@ -28,7 +28,7 @@ describe('twitterService', () => {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ tweet1, tweet2, destination: 'buffer' }),
+            body: JSON.stringify({ tweet1, tweet2, destination: 'buffer', targetChannels: [] }),
         });
 
         expect(result).toEqual(mockResponse);

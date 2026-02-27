@@ -7,13 +7,13 @@
  * @returns {Promise<Object>} An object containing `{ success: true, url: string }` if successful.
  * @throws {Error} If the API request fails, throws an error with the response message or a generic one.
  */
-export async function publishThread(tweet1, tweet2, destination = 'twitter') {
+export async function publishThread(tweet1, tweet2, destination = 'twitter', targetChannels = []) {
     const response = await fetch('/api/publish', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ tweet1, tweet2, destination }),
+        body: JSON.stringify({ tweet1, tweet2, destination, targetChannels }),
     });
 
     const data = await response.json();

@@ -34,7 +34,7 @@ describe('settingsService', () => {
         vi.restoreAllMocks();
     });
 
-    it('should return default settings including publishDestination if localStorage is empty', () => {
+    it('should return default settings including publishDestination and bufferChannels if localStorage is empty', () => {
         const settings = loadSettings();
         expect(settings).toEqual({
             providerConnections: {
@@ -43,7 +43,8 @@ describe('settingsService', () => {
             },
             selectedTag: '',
             postingObjectives: 'Propose engaging Twitter posts that help me increase my follower count',
-            publishDestination: 'twitter'
+            publishDestination: 'twitter',
+            bufferChannels: []
         });
     });
 
@@ -55,6 +56,15 @@ describe('settingsService', () => {
 
         expect(settings.selectedTag).toBe('my-tag');
         expect(settings.publishDestination).toBe('twitter'); // Fallback default
+        expect(settings.bufferChannels).toEqual([]); // Fallback default
+    });
+
+    it('should save and reload specific bufferChannels array', () => {
+        saveSettings({ publishDestination: 'buffer', bufferChannels: ['id1', 'id2'] });
+        const settings = loadSettings();
+
+        expect(settings.publishDestination).toBe('buffer');
+        expect(settings.bufferChannels).toEqual(['id1', 'id2']);
     });
 
     it('should save and reload specific publishDestinations', () => {
