@@ -50,3 +50,27 @@ export const fetchTaggedItems = async (tag) => {
         return [];
     }
 };
+
+export const updateBookmarkTags = async (bookmarkId, tags) => {
+    try {
+        const response = await fetch(`/api/raindropio/bookmark/${bookmarkId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ tags }),
+        });
+
+        if (!response.ok) {
+            console.error(`Failed to update tags for bookmark ${bookmarkId}`);
+            return false;
+        }
+
+        const data = await response.json();
+        return data.success === true;
+    } catch (err) {
+        console.error("Error updating formatting bookmark tags:", err);
+        return false;
+    }
+};
+

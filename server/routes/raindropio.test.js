@@ -8,6 +8,7 @@ import axios from 'axios';
 vi.mock('axios');
 
 const app = express();
+app.use(express.json());
 app.use(session({
     secret: 'test-secret',
     resave: false,
@@ -117,6 +118,54 @@ describe('Raindrop API Routes', () => {
             expect(axios.get).toHaveBeenCalledWith('https://api.raindrop.io/rest/v1/raindrops/0?search=[{"key":"tag","val":"to-tweet"}]', {
                 headers: { Authorization: 'Bearer mock-rd-token' }
             });
+        });
+    });
+
+    describe('PUT /api/raindropio/bookmark/:id', () => {
+        it('should return 401 if user is not authenticated with Raindrop', async () => {
+            const res = await request(app)
+                .put('/api/raindropio/bookmark/1234')
+                .send({ tags: ['tag1'] });
+
+            expect(res.status).toBe(401);
+            expect(res.body).toEqual({ error: 'Not authenticated with Raindrop' });
+        });
+
+        it('should return success if token is valid and Raindrop API updates successfully', async () => {
+            axios.put.mockResolvedValueOnce({
+                data: {
+                    item: { _id: 1234, tags: ['new_tag'] }
+                }
+            });
+
+            const res = await request(app)
+                .put('/api/raindropio/bookmark/1234')
+                .send({ tags: ['new_tag'] })
+                .set('Authorization', 'Bearer mock-rd-token');
+
+            expect(res.status).toBe(200);
+            expect(res.body).toEqual({
+                success: true,
+                item: { _id: 1234, tags: ['new_tag'] }
+            });
+            expect(axios.put).toHaveBeenCalledWith('https://api.raindrop.io/rest/v1/raindrop/1234', { tags: ['new_tag'] }, {
+                headers: { Authorization: 'Bearer mock-rd-token' }
+            });
+        });
+
+        it('should handle Raindrop API update errors gracefully', async () => {
+            axios.put.mockRejectedValueOnce({
+                response: { data: { errorMessage: 'Invalid tag' } },
+                message: 'API Error'
+            });
+
+            const res = await request(app)
+                .put('/api/raindropio/bookmark/1234')
+                .send({ tags: ['invalid'] })
+                .set('Authorization', 'Bearer mock-rd-token');
+
+            expect(res.status).toBe(502);
+            expect(res.body).toEqual({ error: 'Failed to update bookmark in Raindrop API' });
         });
     });
 });

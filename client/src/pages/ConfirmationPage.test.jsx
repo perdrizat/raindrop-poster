@@ -6,6 +6,7 @@ import ConfirmationPage from './ConfirmationPage';
 import { selectEngagingHighlight } from '../services/aiService';
 import { publishThread } from '../services/twitterService';
 import { loadSettings } from '../services/settingsService';
+import { updateBookmarkTags } from '../services/raindropioService';
 
 vi.mock('../services/aiService', () => ({
     selectEngagingHighlight: vi.fn()
@@ -19,19 +20,27 @@ vi.mock('../services/twitterService', () => ({
     publishThread: vi.fn()
 }));
 
+vi.mock('../services/raindropioService', () => ({
+    updateBookmarkTags: vi.fn()
+}));
+
 describe('ConfirmationPage', () => {
     const defaultProps = {
         proposal: "This is my generated tweet proposal that I want to publish.",
         article: {
+            _id: 12345,
             title: "Testing React Hooks",
-            link: "https://example.com/hooks"
+            link: "https://example.com/hooks",
+            tags: ["to-tweet", "react", "hooks"]
         },
-        onBack: vi.fn()
+        onBack: vi.fn(),
+        onNextPost: vi.fn()
     };
 
     beforeEach(() => {
         vi.clearAllMocks();
-        loadSettings.mockReturnValue({ publishDestination: 'twitter' });
+        loadSettings.mockReturnValue({ publishDestination: 'twitter', selectedTag: 'to-tweet' });
+        updateBookmarkTags.mockResolvedValue(true);
     });
 
     it('renders the selected proposal as Tweet 1', () => {
@@ -114,6 +123,43 @@ describe('ConfirmationPage', () => {
 
         await waitFor(() => {
             expect(screen.getByText(/View on Buffer/i)).toBeInTheDocument();
+        });
+    });
+
+    it('updates bookmark tags on successful publish and shows next post button', async () => {
+        publishThread.mockResolvedValueOnce({ success: true, url: "https://twitter.com/post/1" });
+        updateBookmarkTags.mockResolvedValueOnce(true);
+
+        render(<ConfirmationPage {...defaultProps} />);
+
+        const button = await screen.findByRole('button', { name: /Post to X \(Twitter\)/i });
+        fireEvent.click(button);
+
+        // Wait for success screen
+        await waitFor(() => {
+            expect(screen.getByText(/Thread Published!/i)).toBeInTheDocument();
+        });
+
+        // The old tag 'to-tweet' is removed, 'to-tweet_posted' is appended
+        expect(updateBookmarkTags).toHaveBeenCalledWith(12345, ["react", "hooks", "to-tweet_posted"]);
+
+        // Next post button is present and triggers onNextPost
+        const nextContentBtn = screen.getByRole('button', { name: /Publish next post/i });
+        fireEvent.click(nextContentBtn);
+        expect(defaultProps.onNextPost).toHaveBeenCalled();
+    });
+
+    it('shows a warning message if updating bookmark tags fails after successful publish', async () => {
+        publishThread.mockResolvedValueOnce({ success: true, url: "https://twitter.com/post/1" });
+        updateBookmarkTags.mockResolvedValueOnce(false); // Simulate failure
+
+        render(<ConfirmationPage {...defaultProps} />);
+
+        const button = await screen.findByRole('button', { name: /Post to X \(Twitter\)/i });
+        fireEvent.click(button);
+
+        await waitFor(() => {
+            expect(screen.getByText(/Success! Your tweet is live. Warning: Could not update tags in Raindrop.io/i)).toBeInTheDocument();
         });
     });
 });

@@ -18,6 +18,8 @@ const SetupPage = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState('');
     const [testMessage, setTestMessage] = useState(null);
+    const [availableChannels, setAvailableChannels] = useState([]);
+    const [bufferChannels, setBufferChannels] = useState(() => loadSettings().bufferChannels || []);
 
     // 1. Initial Load & Auth Check
     useEffect(() => {
@@ -61,6 +63,24 @@ const SetupPage = () => {
         }
     }, [connections.raindropio]); // Only re-run if raindrop connection status changes
 
+    // 3. Fetch Buffer channels when Buffer is selected and connected
+    useEffect(() => {
+        if (publishDestination === 'buffer' && connections.buffer) {
+            const getChannels = async () => {
+                try {
+                    const response = await fetch('/api/auth/buffer/test');
+                    const data = await response.json();
+                    if (data.success && data.channels) {
+                        setAvailableChannels(data.channels);
+                    }
+                } catch (err) {
+                    console.error('Failed to fetch Buffer channels:', err);
+                }
+            };
+            getChannels();
+        }
+    }, [publishDestination, connections.buffer]);
+
     // Handlers
     const handleConnect = (providerId) => {
         // Venice and Buffer shouldn't be connected via UI as they are backend system keys
@@ -91,7 +111,8 @@ const SetupPage = () => {
         const success = saveSettings({
             selectedTag,
             postingObjectives: objectives,
-            publishDestination
+            publishDestination,
+            bufferChannels
         });
 
         setTimeout(() => {
@@ -229,6 +250,30 @@ const SetupPage = () => {
                                     onConnect={() => { }} // Controlled by backend env var
                                     onTest={handleTest}
                                 />
+                            )}
+                            {publishDestination === 'buffer' && availableChannels.length > 0 && (
+                                <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">Buffer Channels</label>
+                                    <div className="space-y-2">
+                                        {availableChannels.map(ch => (
+                                            <label key={ch.id} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={bufferChannels.includes(ch.id)}
+                                                    onChange={(e) => {
+                                                        setBufferChannels(prev =>
+                                                            e.target.checked
+                                                                ? [...prev, ch.id]
+                                                                : prev.filter(id => id !== ch.id)
+                                                        );
+                                                    }}
+                                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                />
+                                                {ch.service}: {ch.name}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
                             )}
                         </div>
                     </section>

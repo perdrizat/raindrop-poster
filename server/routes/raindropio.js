@@ -66,4 +66,27 @@ router.get('/raindrops/0', async (req, res) => {
     }
 });
 
+// --- UPDATE BOOKMARK TAGS ---
+router.put('/bookmark/:id', async (req, res) => {
+    try {
+        if (!req.session.raindropio || !req.session.raindropio.accessToken) {
+            return res.status(401).json({ error: 'Not authenticated with Raindrop' });
+        }
+
+        const { id } = req.params;
+        const { tags } = req.body;
+
+        const response = await axios.put(`https://api.raindrop.io/rest/v1/raindrop/${id}`, { tags }, {
+            headers: {
+                Authorization: `Bearer ${req.session.raindropio.accessToken}`
+            }
+        });
+
+        res.json({ success: true, item: response.data.item });
+    } catch (error) {
+        console.error('Raindrop API Update Bookmark Error:', error.response?.data || error.message);
+        res.status(502).json({ error: 'Failed to update bookmark in Raindrop API' });
+    }
+});
+
 export default router;

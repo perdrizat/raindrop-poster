@@ -2,14 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { selectEngagingHighlight } from '../services/aiService';
 import { publishThread } from '../services/twitterService';
 import { loadSettings } from '../services/settingsService';
+import { updateBookmarkTags } from '../services/raindropioService';
 
-const ConfirmationPage = ({ proposal, article, objectives, onBack }) => {
+const ConfirmationPage = ({ proposal, article, objectives, onBack, onNextPost }) => {
     const [tweet1Content, setTweet1Content] = useState(proposal);
     const [tweet2Content, setTweet2Content] = useState('');
     const [isLoadingHighlight, setIsLoadingHighlight] = useState(false);
     const [isPublishing, setIsPublishing] = useState(false);
     const [publishError, setPublishError] = useState(null);
     const [publishSuccessData, setPublishSuccessData] = useState(null);
+    const [tagWarning, setTagWarning] = useState(null);
     const destination = loadSettings().publishDestination === 'buffer' ? 'Buffer' : 'X (Twitter)';
     const destinationId = loadSettings().publishDestination || 'twitter';
     const bufferChannels = loadSettings().bufferChannels || [];
@@ -51,9 +53,23 @@ const ConfirmationPage = ({ proposal, article, objectives, onBack }) => {
     const handlePublish = async () => {
         setIsPublishing(true);
         setPublishError(null);
+        setTagWarning(null);
         try {
             const result = await publishThread(tweet1Content, tweet2Content, destinationId, bufferChannels);
             setPublishSuccessData(result);
+
+            // Epic 5: Update tags in Raindrop.io
+            const settings = loadSettings();
+            const selectedTag = settings.selectedTag;
+            if (selectedTag && article._id && article.tags) {
+                const newTags = article.tags
+                    .filter(t => t !== selectedTag)
+                    .concat(`${selectedTag}_posted`);
+                const tagUpdateSuccess = await updateBookmarkTags(article._id, newTags);
+                if (!tagUpdateSuccess) {
+                    setTagWarning('Success! Your tweet is live. Warning: Could not update tags in Raindrop.io.');
+                }
+            }
         } catch (error) {
             setPublishError(error.message || 'Failed to publish thread');
         } finally {
@@ -133,10 +149,23 @@ const ConfirmationPage = ({ proposal, article, objectives, onBack }) => {
                             href={publishSuccessData.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-600 dark:text-blue-400 hover:underline mb-6"
+                            className="text-blue-600 dark:text-blue-400 hover:underline mb-4"
                         >
                             View on {destination}
                         </a>
+                        {tagWarning && (
+                            <div className="mb-4 p-3 rounded-md bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 text-sm font-medium border border-yellow-200 dark:border-yellow-800">
+                                {tagWarning}
+                            </div>
+                        )}
+                        {onNextPost && (
+                            <button
+                                onClick={onNextPost}
+                                className="mt-2 inline-flex items-center justify-center rounded-md px-6 py-2.5 border border-transparent text-sm font-medium text-white shadow-sm transition-all duration-200 bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                            >
+                                Publish next post
+                            </button>
+                        )}
                     </div>
                 ) : (
                     <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-800">
