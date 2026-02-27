@@ -10,7 +10,7 @@ describe('twitterService', () => {
         vi.restoreAllMocks();
     });
 
-    it('publishThread should post to /api/publish and return the response data', async () => {
+    it('publishThread should post to /api/publish and return the response data including destination', async () => {
         const mockResponse = { success: true, url: 'https://twitter.com/user/status/12345' };
 
         globalThis.fetch.mockResolvedValueOnce({
@@ -21,14 +21,14 @@ describe('twitterService', () => {
         const tweet1 = "This is the first tweet.";
         const tweet2 = "And this is the second tweet.";
 
-        const result = await publishThread(tweet1, tweet2);
+        const result = await publishThread(tweet1, tweet2, 'buffer');
 
         expect(globalThis.fetch).toHaveBeenCalledWith('/api/publish', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ tweet1, tweet2 }),
+            body: JSON.stringify({ tweet1, tweet2, destination: 'buffer' }),
         });
 
         expect(result).toEqual(mockResponse);

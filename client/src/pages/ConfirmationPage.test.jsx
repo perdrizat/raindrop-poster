@@ -5,9 +5,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ConfirmationPage from './ConfirmationPage';
 import { selectEngagingHighlight } from '../services/aiService';
 import { publishThread } from '../services/twitterService';
+import { loadSettings } from '../services/settingsService';
 
 vi.mock('../services/aiService', () => ({
     selectEngagingHighlight: vi.fn()
+}));
+
+vi.mock('../services/settingsService', () => ({
+    loadSettings: vi.fn()
 }));
 
 vi.mock('../services/twitterService', () => ({
@@ -26,6 +31,7 @@ describe('ConfirmationPage', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        loadSettings.mockReturnValue({ publishDestination: 'twitter' });
     });
 
     it('renders the selected proposal as Tweet 1', () => {
@@ -73,17 +79,39 @@ describe('ConfirmationPage', () => {
         render(<ConfirmationPage {...defaultProps} />);
 
         // Wait for the UI to settle (highlight check finished)
-        const button = await screen.findByRole('button', { name: /Post to Twitter/i });
+        const button = await screen.findByRole('button', { name: /Post to X \(Twitter\)/i });
         fireEvent.click(button);
 
         expect(publishThread).toHaveBeenCalledWith(
             expect.stringContaining("This is my generated tweet proposal"),
-            expect.stringContaining("Testing React Hooks")
+            expect.stringContaining("Testing React Hooks"),
+            'twitter'
         );
 
         // Wait for success message
         await waitFor(() => {
-            expect(screen.getByText(/View on Twitter/i)).toBeInTheDocument();
+            expect(screen.getByText(/View on X \(Twitter\)/i)).toBeInTheDocument();
+        });
+    });
+
+    it('calls publishThread with buffer destination when set in settings', async () => {
+        loadSettings.mockReturnValue({ publishDestination: 'buffer' });
+
+        publishThread.mockResolvedValueOnce({ success: true, url: "https://buffer.com/update/1" });
+
+        render(<ConfirmationPage {...defaultProps} />);
+
+        const button = await screen.findByRole('button', { name: /Post to Buffer/i });
+        fireEvent.click(button);
+
+        expect(publishThread).toHaveBeenCalledWith(
+            expect.stringContaining("This is my generated tweet proposal"),
+            expect.stringContaining("Testing React Hooks"),
+            'buffer'
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText(/View on Buffer/i)).toBeInTheDocument();
         });
     });
 });

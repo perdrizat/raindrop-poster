@@ -21,10 +21,18 @@ export const loadSettings = () => {
                     twitter: false
                 },
                 selectedTag: '',
-                postingObjectives: 'Propose engaging Twitter posts that help me increase my follower count'
+                postingObjectives: 'Propose engaging Twitter posts that help me increase my follower count',
+                publishDestination: 'twitter'
             };
         }
-        return JSON.parse(serialized);
+        const parsed = JSON.parse(serialized);
+
+        // Ensure defaults for any new properties not present in old saves
+        if (parsed && !parsed.publishDestination) {
+            parsed.publishDestination = 'twitter';
+        }
+
+        return parsed;
     } catch (error) {
         console.error("Failed to load settings from localStorage:", error);
         return {
@@ -33,7 +41,8 @@ export const loadSettings = () => {
                 twitter: false
             },
             selectedTag: '',
-            postingObjectives: 'Propose engaging Twitter posts that help me increase my follower count'
+            postingObjectives: 'Propose engaging Twitter posts that help me increase my follower count',
+            publishDestination: 'twitter'
         };
     }
 };

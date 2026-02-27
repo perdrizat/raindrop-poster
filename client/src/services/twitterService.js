@@ -3,16 +3,17 @@
  *
  * @param {string} tweet1 The content of the main tweet.
  * @param {string} tweet2 The content of the reply tweet.
+ * @param {string} destination The target service ('twitter' or 'buffer')
  * @returns {Promise<Object>} An object containing `{ success: true, url: string }` if successful.
  * @throws {Error} If the API request fails, throws an error with the response message or a generic one.
  */
-export async function publishThread(tweet1, tweet2) {
+export async function publishThread(tweet1, tweet2, destination = 'twitter') {
     const response = await fetch('/api/publish', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ tweet1, tweet2 }),
+        body: JSON.stringify({ tweet1, tweet2, destination }),
     });
 
     const data = await response.json();

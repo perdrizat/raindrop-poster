@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import publishRoutes from './publish';
+import axios from 'axios';
+
+vi.mock('axios');
 
 vi.mock('twitter-api-v2', () => {
     return {
@@ -27,6 +30,11 @@ app.use((req, res, next) => {
 });
 
 describe('POST /api/publish', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        delete process.env.BUFFER_ACCESS_TOKEN;
+        delete process.env.BUFFER_PROFILE_ID;
+    });
 
     it('should fail if user is not authenticated with Twitter', async () => {
         // App without populated session
@@ -68,5 +76,100 @@ describe('POST /api/publish', () => {
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
         expect(response.body.url).toBeDefined();
+    });
+
+    it('should fail if destination is buffer but credentials are not set', async () => {
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
+
+        const response = await request(testApp)
+            .post('/api/publish')
+            .send({ tweet1: 'T1', tweet2: 'T2', destination: 'buffer' });
+
+        expect(response.status).toBe(401);
+        expect(response.body.error).toMatch(/Buffer credentials not configured/i);
+    });
+
+    it('should call Buffer API channels then twice to publish thread and return success', async () => {
+        process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
+        process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
+
+        axios.post.mockImplementation((url, data) => {
+            if (data.query.includes('GetChannels')) {
+                return Promise.resolve({ data: { data: { channels: [{ id: 'mock-channel-id' }] } } });
+            }
+            if (data.query.includes('CreatePost')) {
+                return Promise.resolve({ data: { data: { createPost: { post: { id: 'mock-post-id' } } } } });
+            }
+            return Promise.resolve({ data: {} });
+        });
+
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
+
+        const response = await request(testApp)
+            .post('/api/publish')
+            .send({ tweet1: 'Test Tweet 1', tweet2: 'Test Tweet 2', destination: 'buffer' });
+
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.url).toMatch(/buffer\.com/i);
+
+        expect(axios.post).toHaveBeenCalledTimes(3);
+
+        // Assert Channels payload (GraphQL)
+        expect(axios.post).toHaveBeenNthCalledWith(
+            1,
+            'https://api.buffer.com/1/graphql',
+            expect.objectContaining({
+                query: expect.stringContaining('query GetChannels'),
+                variables: expect.objectContaining({
+                    input: expect.objectContaining({
+                        organizationId: 'mock-profile-id'
+                    })
+                })
+            }),
+            expect.objectContaining({
+                headers: expect.objectContaining({
+                    Authorization: 'Bearer mock-buffer-token',
+                    'Content-Type': 'application/json'
+                })
+            })
+        );
+
+        // Assert first tweet payload (GraphQL)
+        expect(axios.post).toHaveBeenNthCalledWith(
+            2,
+            'https://api.buffer.com/1/graphql',
+            expect.objectContaining({
+                query: expect.stringContaining('mutation CreatePost'),
+                variables: expect.objectContaining({
+                    input: expect.objectContaining({
+                        channelId: 'mock-channel-id',
+                        text: 'Test Tweet 1',
+                        schedulingType: 'automatic',
+                        mode: 'shareNext'
+                    })
+                })
+            }),
+            expect.objectContaining({ headers: expect.objectContaining({ 'Content-Type': 'application/json' }) })
+        );
+
+        // Assert second tweet payload
+        expect(axios.post).toHaveBeenNthCalledWith(
+            3,
+            'https://api.buffer.com/1/graphql',
+            expect.objectContaining({
+                variables: expect.objectContaining({
+                    input: expect.objectContaining({
+                        channelId: 'mock-channel-id',
+                        text: 'Test Tweet 2'
+                    })
+                })
+            }),
+            expect.objectContaining({ headers: expect.objectContaining({ 'Content-Type': 'application/json' }) })
+        );
     });
 });

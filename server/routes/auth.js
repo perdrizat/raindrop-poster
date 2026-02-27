@@ -20,7 +20,8 @@ router.get('/status', (req, res) => {
     res.json({
         twitter: !!req.session.twitter,
         raindropio: !!req.session.raindropio,
-        venice: !!process.env.VENICE_API_KEY
+        venice: !!process.env.VENICE_API_KEY,
+        buffer: !!process.env.BUFFER_ACCESS_TOKEN
     });
 });
 
@@ -38,6 +39,50 @@ router.get('/twitter/test', async (req, res) => {
     } catch (error) {
         console.error('Twitter API Test Error:', error.data || error.message);
         res.status(502).json({ error: 'Failed to connect to Twitter API' });
+    }
+});
+
+// --- BUFFER API SMOKE TEST ---
+router.get('/buffer/test', async (req, res) => {
+    try {
+        if (!process.env.BUFFER_ACCESS_TOKEN || !process.env.BUFFER_PROFILE_ID) {
+            return res.status(401).json({ error: 'Not authenticated with Buffer' });
+        }
+
+        const query = `
+            query GetChannels($input: ChannelsInput!) {
+                channels(input: $input) {
+                    id
+                    service
+                }
+            }
+        `;
+
+        const response = await axios.post('https://api.buffer.com/1/graphql', {
+            query,
+            variables: {
+                input: {
+                    organizationId: process.env.BUFFER_PROFILE_ID
+                }
+            }
+        }, {
+            headers: {
+                'Authorization': `Bearer ${process.env.BUFFER_ACCESS_TOKEN}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (response.data.errors) {
+            return res.status(502).json({ error: response.data.errors[0].message });
+        }
+
+        res.json({ success: true, channelCount: response.data.data.channels.length });
+    } catch (error) {
+        const errMsg = error.response?.status === 500
+            ? 'Buffer API returned 500. Your token might be deactivated or invalid.'
+            : (error.response?.data?.error || error.response?.data?.message || 'Failed to connect to Buffer API');
+
+        res.status(502).json({ error: errMsg });
     }
 });
 

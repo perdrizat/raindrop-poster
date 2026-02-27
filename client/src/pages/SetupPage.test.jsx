@@ -28,13 +28,18 @@ beforeAll(() => {
                     json: () => Promise.resolve({ error: 'Failed to connect via mock' })
                 });
             }
-
-            if (url === '/api/auth/status' && mockRaindropConnection) {
+            if (url === '/api/auth/status') {
                 return originalFetch('http://localhost:3001/api/auth/status').then(res => res.json()).then(data => {
-                    // Force raindropio to true for our specific test
+                    // Force raindropio to true for our specific test + mock buffer for UI checks
+                    return {
+                        ...data,
+                        raindropio: mockRaindropConnection ? true : data.raindropio,
+                        buffer: true // Mock buffer as always connected for UI assertions
+                    };
+                }).then(data => {
                     return {
                         ok: true,
-                        json: () => Promise.resolve({ ...data, raindropio: true })
+                        json: () => Promise.resolve(data)
                     };
                 });
             }
@@ -73,7 +78,8 @@ describe('SetupPage against REAL backend', () => {
         window.localStorage.setItem('raindrop_publisher_settings', JSON.stringify({
             providerConnections: { raindropio: false, twitter: false },
             selectedTag: '',
-            postingObjectives: 'Real objectives'
+            postingObjectives: 'Real objectives',
+            publishDestination: 'twitter'
         }));
 
         // Mock window.location to prevent actual page reloads during the test
@@ -91,7 +97,7 @@ describe('SetupPage against REAL backend', () => {
         render(<SetupPage />);
 
         // Check titles
-        expect(screen.getByText('1. Connect Services')).toBeInTheDocument();
+        expect(screen.getByRole('heading', { level: 2, name: 'Bookmarks' })).toBeInTheDocument();
 
         // Venice SHOULD be present and connected because we are hitting the real backend
         // which has VENICE_API_KEY in its .env
@@ -101,6 +107,15 @@ describe('SetupPage against REAL backend', () => {
 
         // Check textarea gets objective from real localstorage (use getByDisplayValue for input elements)
         expect(screen.getByDisplayValue('Real objectives')).toBeInTheDocument();
+
+        // Buffer SHOULD be present and connected (due to our fetch wrapper mocking it True)
+        // But first we must switch to Buffer as destination
+        const destSelect = await screen.findByLabelText(/Publish Destination/i);
+        fireEvent.change(destSelect, { target: { value: 'buffer' } });
+
+        await waitFor(() => {
+            expect(screen.getByText('Connected to Buffer.com')).toBeInTheDocument();
+        }, { timeout: 3000 });
     });
 
     it('sets window.location when clicking a provider login button', async () => {
@@ -126,9 +141,9 @@ describe('SetupPage against REAL backend', () => {
             expect(screen.getByText('Connected to Venice.ai')).toBeInTheDocument();
         }, { timeout: 3000 });
 
-        const testButtons = screen.getAllByText('Test Connection');
-        // Click the first test button (Venice)
-        fireEvent.click(testButtons[0]);
+        // Find the test button by its title attribute to avoid index issues
+        const veniceTestBtn = await screen.findByTitle('Test API Connection with Venice.ai');
+        fireEvent.click(veniceTestBtn);
 
         // Wait for real backend to respond with models count
         await waitFor(() => {
@@ -152,9 +167,9 @@ describe('SetupPage against REAL backend', () => {
             expect(screen.getByText('Connected to Raindrop.io')).toBeInTheDocument();
         });
 
-        // Click Raindrop Test Connection
-        const testButtons = screen.getAllByText('Test Connection');
-        fireEvent.click(testButtons[0]); // Raindrop should be the first ProviderButton
+        // Click Raindrop Test Connection specifically
+        const rdTestBtn = await screen.findByTitle('Test API Connection with Raindrop.io');
+        fireEvent.click(rdTestBtn);
 
         await waitFor(() => {
             expect(screen.getByText('Failed to connect via mock')).toBeInTheDocument();
@@ -215,6 +230,19 @@ describe('SetupPage against REAL backend', () => {
         expect(screen.getByDisplayValue('Propose engaging Twitter posts that help me increase my follower count')).toBeInTheDocument();
     });
 
+    it('populates dropdown with publish destinations and allows selection', async () => {
+        render(<SetupPage />);
+
+        const select = await screen.findByLabelText(/Publish Destination/i);
+        await waitFor(() => {
+            expect(screen.getByText('X (Twitter)')).toBeInTheDocument();
+            expect(screen.getByText('Buffer')).toBeInTheDocument();
+        });
+
+        fireEvent.change(select, { target: { value: 'buffer' } });
+        expect(select.value).toBe('buffer');
+    });
+
     it('updates state when typing into posting objectives textarea', async () => {
         render(<SetupPage />);
 
@@ -223,5 +251,34 @@ describe('SetupPage against REAL backend', () => {
         fireEvent.change(textarea, { target: { value: 'My custom tone' } });
 
         expect(textarea.value).toBe('My custom tone');
+    });
+
+    it('renders the categorised layout correctly', async () => {
+        render(<SetupPage />);
+        expect(screen.getByRole('heading', { level: 2, name: 'Bookmarks' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { level: 2, name: 'AI Copywriter' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { level: 2, name: 'Publishing' })).toBeInTheDocument();
+    });
+
+    it('conditionally renders Twitter or Buffer based on destination selection', async () => {
+        render(<SetupPage />);
+        const select = await screen.findByLabelText(/Publish Destination/i);
+
+        // Defaults to Twitter
+        expect(select.value).toBe('twitter');
+        // Ensure the Twitter login/connected button is visible, but not the Buffer one
+        const twitterBtn = document.querySelector('button[title*="API Connection with X (Twitter)"]') || screen.getByText('Log in with X (Twitter)');
+        expect(twitterBtn).toBeInTheDocument();
+        expect(screen.queryByText(/Buffer\.com/i)).not.toBeInTheDocument();
+
+        // Switch to Buffer
+        fireEvent.change(select, { target: { value: 'buffer' } });
+
+        await waitFor(() => {
+            expect(screen.getByText(/Buffer\.com/i)).toBeInTheDocument();
+            // The option text "X (Twitter)" exists in the select, so we must query the button specifically
+            const missingTwitterBtn = document.querySelector('button[title*="API Connection with X (Twitter)"]');
+            expect(missingTwitterBtn).not.toBeInTheDocument();
+        });
     });
 });

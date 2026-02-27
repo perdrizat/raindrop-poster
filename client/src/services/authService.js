@@ -9,6 +9,7 @@ export const testConnection = async (provider) => {
         if (provider === 'twitter') endpoint = '/api/auth/twitter/test';
         if (provider === 'raindropio') endpoint = '/api/raindropio/test';
         if (provider === 'venice') endpoint = '/api/venice/test';
+        if (provider === 'buffer') endpoint = '/api/auth/buffer/test';
 
         const response = await fetch(endpoint);
         const data = await response.json();

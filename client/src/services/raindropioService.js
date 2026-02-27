@@ -21,6 +21,11 @@ export const fetchTaggedItems = async (tag) => {
         // The API expects URL encoded JSON search string
         const searchString = encodeURIComponent(`[{"key":"tag","val":"${tag}"}]`);
         const response = await fetch(`/api/raindropio/raindrops/0?search=${searchString}`);
+
+        if (response.status === 401) {
+            throw new Error('unauthorized');
+        }
+
         const data = await response.json();
 
         if (!response.ok || !data.success || !data.items) {
@@ -39,6 +44,9 @@ export const fetchTaggedItems = async (tag) => {
         });
     } catch (err) {
         console.error("Error fetching tagged items:", err);
+        if (err.message === 'unauthorized') {
+            throw err;
+        }
         return [];
     }
 };

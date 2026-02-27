@@ -73,6 +73,8 @@ describe('Auth Routes', () => {
         process.env.RAINDROPIO_REDIRECT_URI = 'http://localhost:3001/api/auth/raindropio/callback';
 
         process.env.VENICE_API_KEY = 'mock_venice_key';
+        process.env.BUFFER_ACCESS_TOKEN = 'mock_buffer_token';
+        process.env.BUFFER_PROFILE_ID = 'mock_buffer_profile';
 
         process.env.TWITTER_CLIENT_ID = 'tw_id';
         process.env.TWITTER_CLIENT_SECRET = 'tw_secret';
@@ -86,7 +88,8 @@ describe('Auth Routes', () => {
             expect(res.body).toEqual({
                 twitter: false,
                 raindropio: false,
-                venice: true
+                venice: true,
+                buffer: true
             });
         });
     });
@@ -126,6 +129,41 @@ describe('Auth Routes', () => {
 
             expect(res.status).toBe(200);
             expect(res.body).toEqual({ success: true, username: 'testuser', name: 'Test User' });
+        });
+    });
+
+    describe('GET /api/auth/buffer/test', () => {
+        it('should return 401 if Buffer token is not in environment', async () => {
+            delete process.env.BUFFER_ACCESS_TOKEN;
+            const res = await request(app).get('/api/auth/buffer/test');
+            expect(res.status).toBe(401);
+            expect(res.body).toEqual({ error: 'Not authenticated with Buffer' });
+        });
+
+        it('should return channel count if Buffer token is valid', async () => {
+            axios.post.mockResolvedValueOnce({
+                data: {
+                    data: {
+                        channels: [
+                            { id: 'profile1', service: 'twitter' },
+                            { id: 'profile2', service: 'linkedin' }
+                        ]
+                    }
+                }
+            });
+
+            const res = await request(app).get('/api/auth/buffer/test');
+
+            expect(res.status).toBe(200);
+            expect(res.body).toEqual({ success: true, channelCount: 2 });
+            expect(axios.post).toHaveBeenCalledWith('https://api.buffer.com/1/graphql', expect.objectContaining({
+                query: expect.stringContaining('query GetChannels')
+            }), {
+                headers: {
+                    Authorization: 'Bearer mock_buffer_token',
+                    'Content-Type': 'application/json'
+                }
+            });
         });
     });
 

@@ -54,7 +54,7 @@ Return only the raw JSON.`;
 CRITICAL INSTRUCTIONS:
 1. The user's specific "User Instructions (Objectives)" take absolute precedence over everything else regarding tone, style, and constraints.
 2. The proposals should be loosely based on the provided Highlights, utilizing the full Article Text for context.
-3. Keep each tweet option concise and punchy (aim for 150-240 characters).
+3. Length constraint: EACH tweet MUST be between 240 and 280 characters long. Do not write short tweets. This is a strict platform requirement.
 4. Do not sound like a bot. Avoid generic marketing speak ("In today's fast-paced world...").
 5. Use emojis sparingly (maximum 1 across all options) unless the user requests otherwise.
 6. Also extract the Author's name from the Article Text. If you cannot find one, set it to null.

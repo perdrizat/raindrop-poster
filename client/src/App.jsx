@@ -8,7 +8,19 @@ import { loadSettings } from './services/settingsService'
 function App() {
   const [confirmationData, setConfirmationData] = useState(null)
   const settings = loadSettings()
-  const [activeView, setActiveView] = useState(settings.selectedTag ? 'publish' : 'setup')
+  const [activeView, setActiveView] = useState(() => {
+    const path = window.location.pathname;
+    if (path === '/setup') return 'setup';
+    if (path === '/queue') return 'publish';
+    return settings.selectedTag ? 'publish' : 'setup';
+  })
+
+  React.useEffect(() => {
+    const path = activeView === 'setup' ? '/setup' : '/queue';
+    if (window.location.pathname !== path) {
+      window.history.pushState(null, '', path);
+    }
+  }, [activeView]);
 
   const handleSelectProposal = (proposal, article) => {
     setConfirmationData({ proposal, article })

@@ -27,6 +27,7 @@ Object.defineProperty(window, 'matchMedia', {
 describe('App routing and navigation (Backlog Side Quests)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        window.history.replaceState(null, '', '/');
     });
 
     it('defaults to SetupPage if selectedTag is missing', () => {

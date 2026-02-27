@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { selectEngagingHighlight } from '../services/aiService';
 import { publishThread } from '../services/twitterService';
+import { loadSettings } from '../services/settingsService';
 
 const ConfirmationPage = ({ proposal, article, objectives, onBack }) => {
     const [tweet1Content, setTweet1Content] = useState(proposal);
@@ -9,6 +10,8 @@ const ConfirmationPage = ({ proposal, article, objectives, onBack }) => {
     const [isPublishing, setIsPublishing] = useState(false);
     const [publishError, setPublishError] = useState(null);
     const [publishSuccessData, setPublishSuccessData] = useState(null);
+    const destination = loadSettings().publishDestination === 'buffer' ? 'Buffer' : 'X (Twitter)';
+    const destinationId = loadSettings().publishDestination || 'twitter';
 
     useEffect(() => {
         const determineTweet2 = async () => {
@@ -48,7 +51,7 @@ const ConfirmationPage = ({ proposal, article, objectives, onBack }) => {
         setIsPublishing(true);
         setPublishError(null);
         try {
-            const result = await publishThread(tweet1Content, tweet2Content);
+            const result = await publishThread(tweet1Content, tweet2Content, destinationId);
             setPublishSuccessData(result);
         } catch (error) {
             setPublishError(error.message || 'Failed to publish thread');
@@ -81,6 +84,9 @@ const ConfirmationPage = ({ proposal, article, objectives, onBack }) => {
                             className="w-full bg-transparent border-none focus:ring-0 resize-y min-h-[100px] pl-8 text-gray-800 dark:text-gray-200 leading-relaxed font-sans placeholder-gray-400 dark:placeholder-gray-500"
                             placeholder="Tweet 1 content..."
                         />
+                        <div className="mt-2 pl-8 flex justify-start text-xs font-medium text-gray-500 dark:text-gray-400">
+                            <span>{tweet1Content.length} characters</span>
+                        </div>
                     </div>
 
                     {/* Tweet 2 */}
@@ -95,12 +101,17 @@ const ConfirmationPage = ({ proposal, article, objectives, onBack }) => {
                                 <span className="text-sm italic">Loading highlight...</span>
                             </div>
                         ) : (
-                            <textarea
-                                value={tweet2Content}
-                                onChange={(e) => setTweet2Content(e.target.value)}
-                                className="w-full bg-transparent border-none focus:ring-0 resize-y min-h-[100px] pl-8 text-gray-800 dark:text-gray-200 leading-relaxed font-sans placeholder-gray-400 dark:placeholder-gray-500"
-                                placeholder="Tweet 2 content..."
-                            />
+                            <>
+                                <textarea
+                                    value={tweet2Content}
+                                    onChange={(e) => setTweet2Content(e.target.value)}
+                                    className="w-full bg-transparent border-none focus:ring-0 resize-y min-h-[100px] pl-8 text-gray-800 dark:text-gray-200 leading-relaxed font-sans placeholder-gray-400 dark:placeholder-gray-500"
+                                    placeholder="Tweet 2 content..."
+                                />
+                                <div className="mt-2 pl-8 flex justify-start text-xs font-medium text-gray-500 dark:text-gray-400">
+                                    <span>{tweet2Content.length} characters</span>
+                                </div>
+                            </>
                         )}
                     </div>
                 </div>
@@ -123,7 +134,7 @@ const ConfirmationPage = ({ proposal, article, objectives, onBack }) => {
                             rel="noopener noreferrer"
                             className="text-blue-600 dark:text-blue-400 hover:underline mb-6"
                         >
-                            View on Twitter
+                            View on {destination}
                         </a>
                     </div>
                 ) : (
@@ -133,7 +144,7 @@ const ConfirmationPage = ({ proposal, article, objectives, onBack }) => {
                             disabled={isPublishing || isLoadingHighlight}
                             className="inline-flex items-center justify-center rounded-md px-6 py-2.5 border border-transparent text-sm font-medium text-white shadow-sm transition-all duration-200 bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:bg-blue-400 disabled:dark:bg-blue-900/50 disabled:opacity-70 disabled:cursor-not-allowed"
                         >
-                            {isPublishing ? 'Publishing...' : 'Post to Twitter'}
+                            {isPublishing ? 'Publishing...' : `Post to ${destination}`}
                         </button>
                     </div>
                 )}

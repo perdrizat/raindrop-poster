@@ -8,10 +8,12 @@ const SetupPage = () => {
     const [connections, setConnections] = useState({
         raindropio: false,
         twitter: false,
-        venice: false
+        venice: false,
+        buffer: false
     });
     const [tags, setTags] = useState([]);
     const [selectedTag, setSelectedTag] = useState(() => loadSettings().selectedTag);
+    const [publishDestination, setPublishDestination] = useState(() => loadSettings().publishDestination);
     const [objectives, setObjectives] = useState(() => loadSettings().postingObjectives);
     const [isSaving, setIsSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState('');
@@ -25,7 +27,8 @@ const SetupPage = () => {
             setConnections({
                 raindropio: status.raindropio,
                 twitter: status.twitter,
-                venice: status.venice
+                venice: status.venice,
+                buffer: status.buffer
             });
 
             // Clean up the URL if we just returned from OAuth
@@ -34,7 +37,10 @@ const SetupPage = () => {
                 window.history.replaceState({}, document.title, window.location.pathname);
             }
             if (params.get('error')) {
-                setTestMessage({ type: 'error', text: `Failed to connect to ${params.get('error')}` });
+                const errParam = params.get('error');
+                let errText = `Failed to connect to ${errParam}`;
+                if (errParam === 'raindrop') errText = 'Raindrop.io not configured';
+                setTestMessage({ type: 'error', text: errText });
                 window.history.replaceState({}, document.title, window.location.pathname);
             }
         };
@@ -57,8 +63,8 @@ const SetupPage = () => {
 
     // Handlers
     const handleConnect = (providerId) => {
-        // Venice shouldn't be connected here as it's a backend system key
-        if (providerId === 'venice') return;
+        // Venice and Buffer shouldn't be connected via UI as they are backend system keys
+        if (providerId === 'venice' || providerId === 'buffer') return;
         login(providerId);
     };
 
@@ -84,7 +90,8 @@ const SetupPage = () => {
         setIsSaving(true);
         const success = saveSettings({
             selectedTag,
-            postingObjectives: objectives
+            postingObjectives: objectives,
+            publishDestination
         });
 
         setTimeout(() => {
@@ -95,7 +102,7 @@ const SetupPage = () => {
     };
 
     return (
-        <div className="space-y-8 animate-fade-in w-full">
+        <>
             {testMessage && (
                 <div className={`fixed top-4 right-4 p-4 rounded-md shadow-lg font-medium z-50 transition-all ${testMessage.type === 'error' ? 'bg-red-100 text-red-800 border-l-4 border-red-500' :
                     testMessage.type === 'success' ? 'bg-green-100 text-green-800 border-l-4 border-green-500' :
@@ -104,113 +111,154 @@ const SetupPage = () => {
                     {testMessage.text}
                 </div>
             )}
+            <div className="space-y-8 animate-fade-in w-full">
 
-            {/* SECTION 1: API Connections */}
-            <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 sm:p-8 transition-colors duration-300">
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">1. Connect Services</h2>
-                <p className="text-gray-600 dark:text-gray-400 mb-6 text-sm">Authenticate your essential accounts via OAuth.</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* COLUMN 1: Bookmarks */}
+                    <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 flex flex-col space-y-4 transition-colors duration-300">
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">Bookmarks</h2>
 
-                <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-                    <ProviderButton
-                        providerName="Raindrop.io"
-                        providerId="raindropio"
-                        isConnected={connections.raindropio}
-                        onConnect={handleConnect}
-                        onTest={handleTest}
-                    />
-                    <ProviderButton
-                        providerName="X (Twitter)"
-                        providerId="twitter"
-                        isConnected={connections.twitter}
-                        onConnect={handleConnect}
-                        onTest={handleTest}
-                    />
-                    <ProviderButton
-                        providerName="Venice.ai"
-                        providerId="venice"
-                        isConnected={connections.venice}
-                        onConnect={() => { }} // Controlled by backend env var
-                        onTest={handleTest}
-                    />
-                </div>
-            </section>
-
-            {/* SECTION 2: Publishing Queue */}
-            <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 sm:p-8 transition-colors duration-300">
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">2. Content Queue</h2>
-                <p className="text-gray-600 dark:text-gray-400 mb-6 text-sm">Select the Raindrop tag that will feed your publishing queue.</p>
-
-                <div className="flex flex-col space-y-2">
-                    <label htmlFor="tag-select" className="text-sm font-medium text-gray-700 dark:text-gray-300">Raindrop Tag</label>
-                    <div className="relative">
-                        <select
-                            id="tag-select"
-                            value={selectedTag}
-                            onChange={(e) => setSelectedTag(e.target.value)}
-                            disabled={!connections.raindropio || tags.length === 0}
-                            className="block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2.5 pl-3 pr-10 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-black dark:text-white disabled:opacity-50 transition-colors duration-200"
-                        >
-                            {!connections.raindropio && <option value="">Connect Raindrop first...</option>}
-                            {connections.raindropio && tags.length === 0 && <option value="">Loading tools...</option>}
-                            {connections.raindropio && tags.map(tag => (
-                                <option key={tag} value={tag}>{tag}</option>
-                            ))}
-                        </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
-                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
-                            </svg>
+                        <div className="flex flex-col space-y-2 flex-grow">
+                            <label htmlFor="tag-select" className="text-sm font-medium text-gray-700 dark:text-gray-300">Raindrop Tag (Queue)</label>
+                            <div className="relative">
+                                <select
+                                    id="tag-select"
+                                    value={selectedTag}
+                                    onChange={(e) => setSelectedTag(e.target.value)}
+                                    disabled={!connections.raindropio || tags.length === 0}
+                                    className="block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2.5 pl-3 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-black dark:text-white disabled:opacity-50 transition-colors duration-200"
+                                >
+                                    {!connections.raindropio && <option value="">Connect first...</option>}
+                                    {connections.raindropio && tags.length === 0 && <option value="">Loading...</option>}
+                                    {connections.raindropio && tags.map(tag => (
+                                        <option key={tag} value={tag}>{tag}</option>
+                                    ))}
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </div>
+                            </div>
                         </div>
-                    </div>
+
+                        <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-800">
+                            <ProviderButton
+                                providerName="Raindrop.io"
+                                providerId="raindropio"
+                                isConnected={connections.raindropio}
+                                onConnect={handleConnect}
+                                onTest={handleTest}
+                            />
+                        </div>
+                    </section>
+
+                    {/* COLUMN 2: AI Copywriter */}
+                    <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 flex flex-col space-y-4 transition-colors duration-300">
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">AI Copywriter</h2>
+
+                        <div className="flex flex-col space-y-2 flex-grow">
+                            {/* No specific selector required for Venice based on instructions */}
+                        </div>
+
+                        <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-800">
+                            <ProviderButton
+                                providerName="Venice.ai"
+                                providerId="venice"
+                                isConnected={connections.venice}
+                                onConnect={() => { }} // Controlled by backend env var
+                                onTest={handleTest}
+                            />
+                        </div>
+                    </section>
+
+                    {/* COLUMN 3: Publishing */}
+                    <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 flex flex-col space-y-4 transition-colors duration-300">
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">Publishing</h2>
+
+                        <div className="flex flex-col space-y-2 flex-grow">
+                            <label htmlFor="destination-select" className="text-sm font-medium text-gray-700 dark:text-gray-300">Publish Destination</label>
+                            <div className="relative">
+                                <select
+                                    id="destination-select"
+                                    value={publishDestination}
+                                    onChange={(e) => setPublishDestination(e.target.value)}
+                                    className="block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2.5 pl-3 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-black dark:text-white transition-colors duration-200"
+                                >
+                                    <option value="twitter">X (Twitter)</option>
+                                    <option value="buffer">Buffer</option>
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-800">
+                            {publishDestination === 'twitter' && (
+                                <ProviderButton
+                                    providerName="X (Twitter)"
+                                    providerId="twitter"
+                                    isConnected={connections.twitter}
+                                    onConnect={handleConnect}
+                                    onTest={handleTest}
+                                />
+                            )}
+                            {publishDestination === 'buffer' && (
+                                <ProviderButton
+                                    providerName="Buffer.com"
+                                    providerId="buffer"
+                                    isConnected={connections.buffer}
+                                    onConnect={() => { }} // Controlled by backend env var
+                                    onTest={handleTest}
+                                />
+                            )}
+                        </div>
+                    </section>
                 </div>
-            </section>
 
-            {/* SECTION 3: AI Settings */}
-            <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 sm:p-8 transition-colors duration-300">
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">3. Posting Objectives</h2>
-                <p className="text-gray-600 dark:text-gray-400 mb-6 text-sm">Provide context for the AI when drafting posts from your saved articles.</p>
-
-                <div className="flex flex-col space-y-2">
-                    <textarea
-                        id="objectives-input"
-                        rows="4"
-                        value={objectives}
-                        onChange={(e) => setObjectives(e.target.value)}
-                        placeholder="E.g., Propose engaging Twitter posts that help me increase my follower count..."
-                        className="block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-3 px-4 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-black dark:text-white transition-colors duration-200 resize-y"
-                    />
-                </div>
-            </section>
-
-            {/* FOOTER: Save Action */}
-            <div className="flex items-center justify-end pt-4 space-x-4">
-                {saveMessage && (
-                    <div className={`text-sm font-medium ${saveMessage.includes('Error') ? 'text-red-500' : 'text-green-500'}`}>
-                        {saveMessage}
+                {/* Bottom Row */}
+                <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6">
+                    <div className="flex flex-col space-y-2">
+                        <label htmlFor="objectives-input" className="text-base font-bold text-gray-900 dark:text-white">Custom AI Prompt (Objectives)</label>
+                        <textarea
+                            id="objectives-input"
+                            rows="3"
+                            value={objectives}
+                            onChange={(e) => setObjectives(e.target.value)}
+                            placeholder="E.g., Propose engaging Twitter posts that help me increase my follower count..."
+                            className="block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-3 px-4 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-black dark:text-white transition-colors duration-200 resize-y"
+                        />
                     </div>
-                )}
-                <button
-                    className={`inline-flex items-center justify-center rounded-md px-6 py-3 border border-transparent text-base font-medium text-white shadow-sm transition-all duration-200 
-                    ${isSaving
-                            ? 'bg-blue-400 cursor-not-allowed'
-                            : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:bg-gray-400 dark:disabled:bg-gray-700'
-                        }`}
-                    onClick={handleSave}
-                    disabled={isSaving}
-                >
-                    {isSaving ? (
-                        <>
-                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            Saving...
-                        </>
-                    ) : 'Save Configuration'}
-                </button>
+
+                    <div className="flex items-center justify-end mt-6 space-x-4">
+                        {saveMessage && (
+                            <div className={`text-sm font-medium ${saveMessage.includes('Error') ? 'text-red-500' : 'text-green-500'}`}>
+                                {saveMessage}
+                            </div>
+                        )}
+                        <button
+                            className={`inline-flex items-center justify-center rounded-md px-6 py-3 border border-transparent text-base font-medium text-white shadow-sm transition-all duration-200 ${isSaving ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:bg-gray-400 dark:disabled:bg-gray-700'}`}
+                            onClick={handleSave}
+                            disabled={isSaving}
+                        >
+                            {isSaving ? (
+                                <>
+                                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Saving...
+                                </>
+                            ) : 'Save Configuration'}
+                        </button>
+                    </div>
+                </section>
+
             </div>
-
-        </div>
+        </>
     );
 };
 

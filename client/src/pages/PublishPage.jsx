@@ -6,7 +6,10 @@ import { loadSettings } from '../services/settingsService';
 const PublishPage = ({ selectedTag, onSelectProposal }) => {
     const [articles, setArticles] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [currentIndex, setCurrentIndex] = useState(0);
+    const [currentIndex, setCurrentIndex] = useState(() => {
+        const saved = localStorage.getItem('raindrop_queue_index');
+        return saved ? parseInt(saved, 10) : 0;
+    });
     const [isGenerating, setIsGenerating] = useState(false);
     const [proposals, setProposals] = useState([]);
     const [extractedAuthor, setExtractedAuthor] = useState(null);
@@ -44,14 +47,26 @@ const PublishPage = ({ selectedTag, onSelectProposal }) => {
         }
     }, [currentArticle, triggerGeneration]);
 
+    useEffect(() => {
+        localStorage.setItem('raindrop_queue_index', currentIndex.toString());
+    }, [currentIndex]);
+
     const loadArticles = useCallback(async () => {
         setIsLoading(true);
         try {
             const items = await fetchTaggedItems(selectedTag);
             setArticles(items);
-            setCurrentIndex(0);
+
+            // Safe restore check
+            setCurrentIndex(prev => {
+                if (items.length === 0) return 0;
+                return prev >= items.length ? 0 : prev;
+            });
         } catch (error) {
             console.error("Failed to load articles", error);
+            if (error.message === 'unauthorized') {
+                window.location.href = '/setup?error=raindrop';
+            }
         } finally {
             setIsLoading(false);
         }
@@ -185,7 +200,10 @@ const PublishPage = ({ selectedTag, onSelectProposal }) => {
                                     </div>
                                     <p className="text-gray-800 dark:text-gray-200 pl-8 whitespace-pre-wrap leading-relaxed">{proposal}</p>
 
-                                    <div className="mt-4 pl-8 flex justify-end">
+                                    <div className="mt-4 pl-8 flex justify-between items-center">
+                                        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                                            {proposal.length} characters
+                                        </span>
                                         <button
                                             onClick={() => onSelectProposal(proposal, { ...currentArticle, extractedAuthor })}
                                             className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
