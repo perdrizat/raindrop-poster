@@ -116,7 +116,9 @@ describe('PublishPage', () => {
         expect(generateProposals).toHaveBeenCalledWith(mockArticles[0], expect.any(String));
 
         // Wait for loading element specific to generation
-        expect(screen.getByText(/Generating proposals.../i)).toBeInTheDocument();
+        await waitFor(() => {
+            expect(screen.getByText(/Generating proposals.../i)).toBeInTheDocument();
+        });
 
         // Resolve to clean up
         resolveGen({ proposals: ['Prop 1', 'Prop 2', 'Prop 3'], author: null });

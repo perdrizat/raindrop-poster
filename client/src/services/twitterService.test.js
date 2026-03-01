@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { publishThread } from './twitterService';
+import { publishPost } from './twitterService';
 
 describe('twitterService', () => {
     beforeEach(() => {
@@ -10,7 +10,7 @@ describe('twitterService', () => {
         vi.restoreAllMocks();
     });
 
-    it('publishThread should post to /api/publish and return the response data including destination', async () => {
+    it('publishPost should post to /api/publish with text, articleUrl, and screenshotUrl', async () => {
         const mockResponse = { success: true, url: 'https://twitter.com/user/status/12345' };
 
         globalThis.fetch.mockResolvedValueOnce({
@@ -18,34 +18,50 @@ describe('twitterService', () => {
             json: async () => mockResponse,
         });
 
-        const tweet1 = "This is the first tweet.";
-        const tweet2 = "And this is the second tweet.";
-
-        const result = await publishThread(tweet1, tweet2, 'buffer');
+        const result = await publishPost(
+            'Test post text',
+            'https://example.com/article',
+            'https://i.ibb.co/abc/shot.png',
+            'buffer',
+            ['channel1']
+        );
 
         expect(globalThis.fetch).toHaveBeenCalledWith('/api/publish', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ tweet1, tweet2, destination: 'buffer', targetChannels: [] }),
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                text: 'Test post text',
+                articleUrl: 'https://example.com/article',
+                screenshotUrl: 'https://i.ibb.co/abc/shot.png',
+                destination: 'buffer',
+                targetChannels: ['channel1'],
+            }),
         });
 
         expect(result).toEqual(mockResponse);
     });
 
-    it('publishThread should throw an error if the API request fails', async () => {
+    it('publishPost should throw an error if the API request fails', async () => {
         globalThis.fetch.mockResolvedValueOnce({
             ok: false,
-            json: async () => ({ error: 'Twitter API Error: Unauthorized' }),
+            json: async () => ({ error: 'API Error' }),
         });
 
-        await expect(publishThread("Tweet 1", "Tweet 2")).rejects.toThrow('Twitter API Error: Unauthorized');
+        await expect(publishPost('Text', 'https://example.com'))
+            .rejects.toThrow('API Error');
     });
 
-    it('publishThread should throw a generic error if the network request fails entirely', async () => {
-        globalThis.fetch.mockRejectedValueOnce(new Error('Network error'));
+    it('publishPost should handle null screenshotUrl gracefully', async () => {
+        globalThis.fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ success: true, url: 'https://twitter.com/post/1' }),
+        });
 
-        await expect(publishThread("Tweet 1", "Tweet 2")).rejects.toThrow('Network error');
+        const result = await publishPost('Text', 'https://example.com', null, 'twitter');
+
+        expect(result.success).toBe(true);
+
+        const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+        expect(body.screenshotUrl).toBeNull();
     });
 });

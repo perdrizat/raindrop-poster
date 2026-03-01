@@ -21,6 +21,7 @@ let mockRaindropConnection = false;
 
 beforeAll(() => {
     globalThis.fetch = async (url, options = {}) => {
+        console.log("FETCH MOCK CALLED:", url);
         if (typeof url === 'string' && url.startsWith('/api/')) {
             if (url === '/api/raindropio/test') {
                 return Promise.resolve({
@@ -29,18 +30,22 @@ beforeAll(() => {
                 });
             }
             if (url === '/api/auth/status') {
-                return originalFetch('http://localhost:3001/api/auth/status').then(res => res.json()).then(data => {
-                    // Force raindropio to true for our specific test + mock buffer for UI checks
-                    return {
-                        ...data,
-                        raindropio: mockRaindropConnection ? true : data.raindropio,
-                        buffer: true // Mock buffer as always connected for UI assertions
-                    };
-                }).then(data => {
-                    return {
-                        ok: true,
-                        json: () => Promise.resolve(data)
-                    };
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        raindropio: mockRaindropConnection ? true : false,
+                        venice: true,
+                        twitter: false,
+                        buffer: true,
+                        imgbb: true
+                    })
+                });
+            }
+
+            if (url === '/api/venice/test' || url === '/api/imgbb/test' || url === '/api/auth/twitter/test') {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ success: true, modelsCount: 12 })
                 });
             }
 

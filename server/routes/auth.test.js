@@ -42,6 +42,7 @@ vi.mock('twitter-api-v2', () => {
 
 // 2. Setup an isolated Express app for testing the router
 const app = express();
+app.use(express.json());
 app.use(session({
     secret: 'test-secret',
     resave: false,
@@ -89,7 +90,8 @@ describe('Auth Routes', () => {
                 twitter: false,
                 raindropio: false,
                 venice: true,
-                buffer: true
+                buffer: true,
+                imgbb: false,
             });
         });
     });
@@ -160,7 +162,9 @@ describe('Auth Routes', () => {
                 channels: [
                     { id: 'profile1', service: 'twitter', name: '@mockUser' },
                     { id: 'profile2', service: 'linkedin', name: 'Mock User' }
-                ]
+                ],
+                channelCount: 2,
+                services: 'twitter, linkedin',
             });
             expect(axios.post).toHaveBeenCalledWith('https://api.buffer.com/1/graphql', expect.objectContaining({
                 query: expect.stringContaining('query GetChannels')
@@ -170,6 +174,37 @@ describe('Auth Routes', () => {
                     'Content-Type': 'application/json'
                 }
             });
+        });
+    });
+
+    describe('ImgBB API key endpoints', () => {
+        it('POST /api/auth/imgbb/key should save the API key', async () => {
+            const res = await request(app)
+                .post('/api/auth/imgbb/key')
+                .send({ apiKey: 'test_imgbb_key' });
+            expect(res.status).toBe(200);
+            expect(res.body).toEqual({ success: true });
+            expect(process.env.IMGBB_API_KEY).toBe('test_imgbb_key');
+        });
+
+        it('POST /api/auth/imgbb/key should reject empty key', async () => {
+            const res = await request(app)
+                .post('/api/auth/imgbb/key')
+                .send({ apiKey: '' });
+            expect(res.status).toBe(400);
+        });
+
+        it('GET /api/auth/imgbb/test should return success when key is set', async () => {
+            process.env.IMGBB_API_KEY = 'test_key';
+            const res = await request(app).get('/api/auth/imgbb/test');
+            expect(res.status).toBe(200);
+            expect(res.body.success).toBe(true);
+        });
+
+        it('GET /api/auth/imgbb/test should return 401 when key is missing', async () => {
+            delete process.env.IMGBB_API_KEY;
+            const res = await request(app).get('/api/auth/imgbb/test');
+            expect(res.status).toBe(401);
         });
     });
 

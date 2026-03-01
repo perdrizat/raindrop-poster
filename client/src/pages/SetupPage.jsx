@@ -9,12 +9,15 @@ const SetupPage = () => {
         raindropio: false,
         twitter: false,
         venice: false,
-        buffer: false
+        buffer: false,
+        imgbb: false,
     });
     const [tags, setTags] = useState([]);
     const [selectedTag, setSelectedTag] = useState(() => loadSettings().selectedTag);
     const [publishDestination, setPublishDestination] = useState(() => loadSettings().publishDestination);
     const [objectives, setObjectives] = useState(() => loadSettings().postingObjectives);
+    const [imgbbKey, setImgbbKey] = useState('');
+    const [imgbbSaving, setImgbbSaving] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState('');
     const [testMessage, setTestMessage] = useState(null);
@@ -30,7 +33,8 @@ const SetupPage = () => {
                 raindropio: status.raindropio,
                 twitter: status.twitter,
                 venice: status.venice,
-                buffer: status.buffer
+                buffer: status.buffer,
+                imgbb: status.imgbb,
             });
 
             // Clean up the URL if we just returned from OAuth
@@ -99,11 +103,38 @@ const SetupPage = () => {
             if (providerId === 'twitter') msg = `Twitter connected as @${result.username}`;
             if (providerId === 'raindropio') msg = `Raindrop connected as ${result.user}`;
             if (providerId === 'venice') msg = `Venice connected (${result.modelsCount} models found)`;
+            if (providerId === 'buffer') msg = `Buffer connected — ${result.channelCount} channel(s) on ${result.services}`;
+            if (providerId === 'imgbb') msg = `ImgBB API key is configured ✓`;
             setTestMessage({ type: 'success', text: msg });
         }
 
         // Clear message after 5 seconds
         setTimeout(() => setTestMessage(null), 5000);
+    };
+
+    const handleSaveImgbbKey = async () => {
+        if (!imgbbKey.trim()) return;
+        setImgbbSaving(true);
+        try {
+            const response = await fetch('/api/auth/imgbb/key', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ apiKey: imgbbKey }),
+            });
+            if (response.ok) {
+                setConnections(prev => ({ ...prev, imgbb: true }));
+                setTestMessage({ type: 'success', text: 'ImgBB API key saved!' });
+                setImgbbKey('');
+                setTimeout(() => setTestMessage(null), 3000);
+            } else {
+                const data = await response.json();
+                setTestMessage({ type: 'error', text: data.error || 'Failed to save key' });
+            }
+        } catch {
+            setTestMessage({ type: 'error', text: 'Network error saving ImgBB key' });
+        } finally {
+            setImgbbSaving(false);
+        }
     };
 
     const handleSave = () => {
@@ -197,14 +228,41 @@ const SetupPage = () => {
                             {/* No specific selector required for Venice based on instructions */}
                         </div>
 
-                        <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-800">
+                        <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-800 space-y-4">
                             <ProviderButton
                                 providerName="Venice.ai"
                                 providerId="venice"
                                 isConnected={connections.venice}
-                                onConnect={() => { }} // Controlled by backend env var
+                                onConnect={() => { }}
                                 onTest={handleTest}
                             />
+
+                            <div className="pt-3 border-t border-gray-100 dark:border-gray-800">
+                                <label htmlFor="imgbb-key-input" className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
+                                    ImgBB API Key
+                                    {connections.imgbb && <span className="ml-2 text-green-500 text-xs font-semibold">✓ Configured</span>}
+                                </label>
+                                <div className="flex gap-2">
+                                    <input
+                                        id="imgbb-key-input"
+                                        type="password"
+                                        value={imgbbKey}
+                                        onChange={(e) => setImgbbKey(e.target.value)}
+                                        placeholder={connections.imgbb ? '••••••••' : 'Paste your ImgBB key'}
+                                        className="flex-1 rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-black dark:text-white transition-colors duration-200"
+                                    />
+                                    <button
+                                        onClick={handleSaveImgbbKey}
+                                        disabled={imgbbSaving || !imgbbKey.trim()}
+                                        className="rounded-md px-3 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                        {imgbbSaving ? '...' : 'Save'}
+                                    </button>
+                                </div>
+                                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                    Get a free key at <a href="https://api.imgbb.com/" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">imgbb.com</a>
+                                </p>
+                            </div>
                         </div>
                     </section>
 

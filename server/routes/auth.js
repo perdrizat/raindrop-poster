@@ -21,7 +21,8 @@ router.get('/status', (req, res) => {
         twitter: !!req.session.twitter,
         raindropio: !!req.session.raindropio,
         venice: !!process.env.VENICE_API_KEY,
-        buffer: !!process.env.BUFFER_ACCESS_TOKEN
+        buffer: !!process.env.BUFFER_ACCESS_TOKEN,
+        imgbb: !!process.env.IMGBB_API_KEY,
     });
 });
 
@@ -77,7 +78,14 @@ router.get('/buffer/test', async (req, res) => {
             return res.status(502).json({ error: response.data.errors[0].message });
         }
 
-        res.json({ success: true, channels: response.data.data.channels });
+        const channels = response.data.data.channels;
+        const services = [...new Set(channels.map(ch => ch.service))];
+        res.json({
+            success: true,
+            channels,
+            channelCount: channels.length,
+            services: services.join(', '),
+        });
     } catch (error) {
         const errMsg = error.response?.status === 500
             ? 'Buffer API returned 500. Your token might be deactivated or invalid.'
@@ -86,6 +94,24 @@ router.get('/buffer/test', async (req, res) => {
         res.status(502).json({ error: errMsg });
     }
 });
+
+// --- IMGBB API KEY ---
+router.post('/imgbb/key', (req, res) => {
+    const { apiKey } = req.body;
+    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
+        return res.status(400).json({ error: 'API key is required' });
+    }
+    process.env.IMGBB_API_KEY = apiKey.trim();
+    res.json({ success: true });
+});
+
+router.get('/imgbb/test', async (req, res) => {
+    if (!process.env.IMGBB_API_KEY) {
+        return res.status(401).json({ error: 'ImgBB API key not configured' });
+    }
+    res.json({ success: true, message: 'ImgBB API key is configured' });
+});
+
 
 // --- INITIALIZE OAUTH FLOWS ---
 

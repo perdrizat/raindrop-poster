@@ -7,10 +7,10 @@ const router = express.Router();
 router.post('/', async (req, res) => {
     try {
         const destination = req.body.destination || 'twitter';
-        const { tweet1, tweet2 } = req.body;
+        const { text, articleUrl, screenshotUrl } = req.body;
 
-        if (!tweet1 || !tweet2) {
-            return res.status(400).json({ error: 'Both tweet1 and tweet2 content are required' });
+        if (!text) {
+            return res.status(400).json({ error: 'Post text is required' });
         }
 
         if (destination === 'buffer') {
@@ -34,49 +34,36 @@ router.post('/', async (req, res) => {
                         ... on InvalidInputError {
                             message
                         }
+                        ... on UnexpectedError {
+                            message
+                        }
                     }
                 }
             `;
 
             let successCount = 0;
             const errors = [];
+            const postedIds = [];
 
             for (const channelId of targetChannels) {
                 try {
-                    // Post the first idea
-                    const res1 = await axios.post('https://api.buffer.com/1/graphql', {
-                        query,
-                        variables: {
-                            input: {
-                                channelId: channelId,
-                                text: tweet1,
-                                schedulingType: "automatic",
-                                mode: "shareNext"
-                            }
-                        }
-                    }, {
-                        headers: {
-                            'Authorization': `Bearer ${process.env.BUFFER_ACCESS_TOKEN}`,
-                            'Content-Type': 'application/json'
-                        }
-                    });
+                    const input = {
+                        channelId: channelId,
+                        text: text,
+                        schedulingType: "automatic",
+                        mode: "shareNext"
+                    };
 
-                    if (res1.data.errors) {
-                        errors.push(`Channel ${channelId}: ${res1.data.errors[0].message}`);
-                        continue; // Skip the second tweet for this channel if the first fails
+                    // Attach image if screenshot URL is provided
+                    if (screenshotUrl) {
+                        input.assets = {
+                            images: [{ url: screenshotUrl }]
+                        };
                     }
 
-                    // Post the second idea
-                    const res2 = await axios.post('https://api.buffer.com/1/graphql', {
+                    const response = await axios.post('https://api.buffer.com/1/graphql', {
                         query,
-                        variables: {
-                            input: {
-                                channelId: channelId,
-                                text: tweet2,
-                                schedulingType: "automatic",
-                                mode: "shareNext"
-                            }
-                        }
+                        variables: { input }
                     }, {
                         headers: {
                             'Authorization': `Bearer ${process.env.BUFFER_ACCESS_TOKEN}`,
@@ -84,12 +71,20 @@ router.post('/', async (req, res) => {
                         }
                     });
 
-                    if (res2.data.errors) {
-                        errors.push(`Channel ${channelId} (Tweet 2): ${res2.data.errors[0].message}`);
+                    if (response.data.errors) {
+                        errors.push(`Channel ${channelId}: ${response.data.errors[0].message}`);
                         continue;
                     }
 
-                    successCount++;
+                    if (response.data.data?.createPost?.__typename === 'PostActionSuccess') {
+                        postedIds.push(response.data.data.createPost.post.id);
+                        successCount++;
+                    } else if (response.data.data?.createPost?.__typename === 'InvalidInputError' || response.data.data?.createPost?.__typename === 'UnexpectedError') {
+                        errors.push(`Channel ${channelId}: ${response.data.data.createPost.message}`);
+                    } else {
+                        console.log("FALLBACK RESPONSE:", JSON.stringify(response.data.data, null, 2));
+                        successCount++;
+                    }
                 } catch (e) {
                     console.error(`Error posting to channel ${channelId}:`, e.message);
                     errors.push(`Channel ${channelId} threw an exception.`);
@@ -109,7 +104,8 @@ router.post('/', async (req, res) => {
             return res.json({
                 success: true,
                 url: 'https://publish.buffer.com/all-channels',
-                message: `Published to ${successCount} channel(s)`
+                message: `Published to ${successCount} channel(s)`,
+                postedIds
             });
 
         } else {
@@ -120,21 +116,13 @@ router.post('/', async (req, res) => {
 
             const client = new TwitterApi(req.session.twitter.accessToken);
 
-            // Post the first tweet
-            const firstTweetResponse = await client.v2.tweet(tweet1);
+            // Post a single tweet
+            const tweetResponse = await client.v2.tweet(text);
 
-            // Post the second tweet as a reply
-            await client.v2.tweet({
-                text: tweet2,
-                reply: {
-                    in_reply_to_tweet_id: firstTweetResponse.data.id
-                }
-            });
-
-            let url = `https://twitter.com/user/status/${firstTweetResponse.data.id}`;
+            let url = `https://twitter.com/user/status/${tweetResponse.data.id}`;
             try {
                 const me = await client.v2.me();
-                url = `https://twitter.com/${me.data.username}/status/${firstTweetResponse.data.id}`;
+                url = `https://twitter.com/${me.data.username}/status/${tweetResponse.data.id}`;
             } catch (e) {
                 console.warn("Could not fetch user ID for URL construction", e.message);
             }
@@ -144,7 +132,7 @@ router.post('/', async (req, res) => {
     } catch (error) {
         console.error('Publish Error:', error.response?.data || error.message || error);
 
-        let errorMsg = 'Failed to publish thread';
+        let errorMsg = 'Failed to publish post';
         if (error.response?.status === 500) {
             errorMsg = 'Destination API returned 500. Your token might be deactivated.';
         } else if (error.response?.data?.error) {

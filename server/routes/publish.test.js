@@ -19,16 +19,6 @@ vi.mock('twitter-api-v2', () => {
     };
 });
 
-// Setup basic express app for testing router
-const app = express();
-app.use(express.json());
-
-// Mock session middleware to inject user tokens during tests
-app.use((req, res, next) => {
-    req.session = {};
-    next();
-});
-
 describe('POST /api/publish', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -36,8 +26,21 @@ describe('POST /api/publish', () => {
         delete process.env.BUFFER_PROFILE_ID;
     });
 
+    it('should fail if text is missing', async () => {
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
+
+        const response = await request(testApp)
+            .post('/api/publish')
+            .send({});
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toMatch(/text.*required/i);
+    });
+
+    // --- Twitter Tests ---
     it('should fail if user is not authenticated with Twitter', async () => {
-        // App without populated session
         const testApp = express();
         testApp.use(express.json());
         testApp.use((req, res, next) => {
@@ -48,22 +51,18 @@ describe('POST /api/publish', () => {
 
         const response = await request(testApp)
             .post('/api/publish')
-            .send({ tweet1: 'T1', tweet2: 'T2' });
+            .send({ text: 'Hello world', articleUrl: 'https://example.com' });
 
         expect(response.status).toBe(401);
         expect(response.body.error).toMatch(/Twitter connection required/i);
     });
 
-    it('should call Twitter API to publish thread and return success', async () => {
-        // App WITH populated session
+    it('should publish a single tweet and return success', async () => {
         const testApp = express();
         testApp.use(express.json());
         testApp.use((req, res, next) => {
             req.session = {
-                twitter: {
-                    accessToken: 'mock-access',
-                    accessSecret: 'mock-secret'
-                }
+                twitter: { accessToken: 'mock-access', accessSecret: 'mock-secret' }
             };
             next();
         });
@@ -71,13 +70,14 @@ describe('POST /api/publish', () => {
 
         const response = await request(testApp)
             .post('/api/publish')
-            .send({ tweet1: 'Test Tweet 1', tweet2: 'Test Tweet 2' });
+            .send({ text: 'Test post', articleUrl: 'https://example.com' });
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
         expect(response.body.url).toBeDefined();
     });
 
+    // --- Buffer Tests ---
     it('should fail if destination is buffer but credentials are not set', async () => {
         const testApp = express();
         testApp.use(express.json());
@@ -85,22 +85,19 @@ describe('POST /api/publish', () => {
 
         const response = await request(testApp)
             .post('/api/publish')
-            .send({ tweet1: 'T1', tweet2: 'T2', destination: 'buffer' });
+            .send({ text: 'T1', destination: 'buffer' });
 
         expect(response.status).toBe(401);
         expect(response.body.error).toMatch(/Buffer credentials not configured/i);
     });
 
-    it('should iterate over targetChannels and execute createPost for each tweet per channel', async () => {
+    it('should post single update to each Buffer channel', async () => {
         process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
         process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
 
-        axios.post.mockImplementation((url, data) => {
-            if (data.query.includes('CreatePost')) {
-                return Promise.resolve({ data: { data: { createPost: { post: { id: `mock-post-id-${Date.now()}` } } } } });
-            }
-            return Promise.resolve({ data: {} });
-        });
+        axios.post.mockImplementation(() =>
+            Promise.resolve({ data: { data: { createPost: { post: { id: 'mock-post-id' } } } } })
+        );
 
         const testApp = express();
         testApp.use(express.json());
@@ -109,21 +106,20 @@ describe('POST /api/publish', () => {
         const response = await request(testApp)
             .post('/api/publish')
             .send({
-                tweet1: 'Test Tweet 1',
-                tweet2: 'Test Tweet 2',
+                text: 'Test post',
+                articleUrl: 'https://example.com',
                 destination: 'buffer',
                 targetChannels: ['colombia', 'argentina']
             });
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
-        expect(response.body.url).toMatch(/buffer\.com/i);
-        expect(response.body.message).toMatch(/Published to 2 channel\(s\)/i);
+        expect(response.body.message).toMatch(/Published to 2 channel/i);
 
-        // 2 tweets * 2 channels = 4 calls total. 
-        expect(axios.post).toHaveBeenCalledTimes(4);
+        // 1 post × 2 channels = 2 calls
+        expect(axios.post).toHaveBeenCalledTimes(2);
 
-        // Assert Channel 1, Tweet 1
+        // Assert Channel 1
         expect(axios.post).toHaveBeenNthCalledWith(
             1,
             'https://api.buffer.com/1/graphql',
@@ -132,58 +128,80 @@ describe('POST /api/publish', () => {
                 variables: expect.objectContaining({
                     input: expect.objectContaining({
                         channelId: 'colombia',
-                        text: 'Test Tweet 1',
-                        schedulingType: 'automatic',
-                        mode: 'shareNext'
+                        text: 'Test post',
                     })
                 })
             }),
             expect.objectContaining({ headers: expect.objectContaining({ 'Content-Type': 'application/json' }) })
         );
+    });
 
-        // Assert Channel 1, Tweet 2
-        expect(axios.post).toHaveBeenNthCalledWith(
-            2,
+    it('should include assets.images in Buffer post when screenshotUrl is provided', async () => {
+        process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
+        process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
+
+        axios.post.mockImplementation(() =>
+            Promise.resolve({ data: { data: { createPost: { post: { id: 'mock-post-id' } } } } })
+        );
+
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
+
+        const response = await request(testApp)
+            .post('/api/publish')
+            .send({
+                text: 'Test with image',
+                articleUrl: 'https://example.com',
+                destination: 'buffer',
+                targetChannels: ['channel1'],
+                screenshotUrl: 'https://i.ibb.co/abc/screenshot.png'
+            });
+
+        expect(response.status).toBe(200);
+
+        // Verify the GraphQL call includes assets
+        expect(axios.post).toHaveBeenCalledWith(
             'https://api.buffer.com/1/graphql',
             expect.objectContaining({
                 variables: expect.objectContaining({
                     input: expect.objectContaining({
-                        channelId: 'colombia',
-                        text: 'Test Tweet 2'
+                        channelId: 'channel1',
+                        text: 'Test with image',
+                        assets: {
+                            images: [{ url: 'https://i.ibb.co/abc/screenshot.png' }]
+                        }
                     })
                 })
             }),
-            expect.objectContaining({ headers: expect.objectContaining({ 'Content-Type': 'application/json' }) })
+            expect.anything()
+        );
+    });
+
+    it('should NOT include assets when screenshotUrl is absent', async () => {
+        process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
+        process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
+
+        axios.post.mockImplementation(() =>
+            Promise.resolve({ data: { data: { createPost: { post: { id: 'mock-post-id' } } } } })
         );
 
-        // Assert Channel 2, Tweet 1
-        expect(axios.post).toHaveBeenNthCalledWith(
-            3,
-            'https://api.buffer.com/1/graphql',
-            expect.objectContaining({
-                variables: expect.objectContaining({
-                    input: expect.objectContaining({
-                        channelId: 'argentina',
-                        text: 'Test Tweet 1'
-                    })
-                })
-            }),
-            expect.objectContaining({ headers: expect.objectContaining({ 'Content-Type': 'application/json' }) })
-        );
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
 
-        // Assert Channel 2, Tweet 2
-        expect(axios.post).toHaveBeenNthCalledWith(
-            4,
-            'https://api.buffer.com/1/graphql',
-            expect.objectContaining({
-                variables: expect.objectContaining({
-                    input: expect.objectContaining({
-                        channelId: 'argentina',
-                        text: 'Test Tweet 2'
-                    })
-                })
-            }),
-            expect.objectContaining({ headers: expect.objectContaining({ 'Content-Type': 'application/json' }) })
-        );
+        const response = await request(testApp)
+            .post('/api/publish')
+            .send({
+                text: 'Test no image',
+                destination: 'buffer',
+                targetChannels: ['channel1']
+            });
+
+        expect(response.status).toBe(200);
+
+        // Verify no assets field
+        const callArgs = axios.post.mock.calls[0][1];
+        expect(callArgs.variables.input.assets).toBeUndefined();
     });
 });

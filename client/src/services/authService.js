@@ -10,6 +10,7 @@ export const testConnection = async (provider) => {
         if (provider === 'raindropio') endpoint = '/api/raindropio/test';
         if (provider === 'venice') endpoint = '/api/venice/test';
         if (provider === 'buffer') endpoint = '/api/auth/buffer/test';
+        if (provider === 'imgbb') endpoint = '/api/auth/imgbb/test';
 
         const response = await fetch(endpoint);
         const data = await response.json();
@@ -30,6 +31,6 @@ export const checkAuthStatus = async () => {
         return await response.json();
     } catch (err) {
         console.error("Status check error:", err);
-        return { twitter: false, raindropio: false, venice: false };
+        return { twitter: false, raindropio: false, venice: false, buffer: false, imgbb: false };
     }
 };

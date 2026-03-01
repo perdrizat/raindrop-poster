@@ -1,44 +1,65 @@
-import axios from 'axios';
-import * as cheerio from 'cheerio';
+import puppeteer from 'puppeteer';
 
+let browserInstance = null;
+
+/**
+ * Returns a shared Puppeteer browser instance (lazy singleton).
+ * Reused across scraping and screenshot operations.
+ */
+export const getBrowser = async () => {
+    if (!browserInstance || !browserInstance.connected) {
+        browserInstance = await puppeteer.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        });
+    }
+    return browserInstance;
+};
+
+/**
+ * Scrapes article text from a URL using Puppeteer.
+ * Prefers <article>, falls back to <main>, then <body>.
+ */
 export const scrapeArticle = async (url) => {
+    let page;
     try {
-        const response = await axios.get(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (compatible; RaindropPoster/1.0)',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-            },
-            timeout: 10000 // 10 second timeout
+        const browser = await getBrowser();
+        page = await browser.newPage();
+
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+
+        const text = await page.evaluate(() => {
+            // Remove noise elements
+            const removeSelectors = 'script, style, nav, footer, header, aside, iframe, noscript';
+            document.querySelectorAll(removeSelectors).forEach(el => el.remove());
+
+            // Try article > main > body
+            const article = document.querySelector('article');
+            if (article && article.textContent.trim().length > 0) {
+                return article.textContent;
+            }
+
+            const main = document.querySelector('main');
+            if (main && main.textContent.trim().length > 0) {
+                return main.textContent;
+            }
+
+            return document.body.textContent;
         });
 
-        const html = response.data;
-        const $ = cheerio.load(html);
-
-        // Remove script, style, and navigation tags
-        $('script, style, nav, footer, header, aside, iframe, noscript').remove();
-
-        // Try to find the main article container
-        let articleBody = $('article').text();
-
-        if (!articleBody || articleBody.trim().length === 0) {
-            articleBody = $('main').text();
-        }
-
-        if (!articleBody || articleBody.trim().length === 0) {
-            // Fallback to body text
-            articleBody = $('body').text();
-        }
-
-        // Clean up whitespace
-        const cleanText = articleBody
+        // Clean up whitespace and truncate
+        const cleanText = text
             .replace(/\s+/g, ' ')
             .replace(/\n+/g, '\n')
             .trim();
 
-        // Truncate if insanely long to save LLM tokens (e.g. 50k chars max)
         return cleanText.substring(0, 50000);
     } catch (error) {
         console.error('Scraping error:', error.message);
         throw new Error('Failed to scrape the article.');
+    } finally {
+        if (page) {
+            await page.close().catch(() => { });
+        }
     }
 };
