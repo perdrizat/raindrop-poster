@@ -33,7 +33,8 @@ The application has been successfully built and supports the following core work
 * **User Setup & Configuration:** Authenticate with external services via OAuth (Twitter, Raindrop.io) and define custom AI posting objectives.
 * **Content Ingestion:** Automatically fetch and navigate an article queue from Raindrop.io based on tags.
 * **AI-Powered Generation:** Leverage the Venice LLM to automatically generate concise (~250 chars) tweet proposals based on the article's text and highlights.
-* **Publishing Workflow:** Review AI proposals and publish threads directly.
+* **Automated Screenshots:** Automatically generate beautiful, context-aware square screenshots of the exact text highlights using Playwright and upload them via ImgBB to attach to posts.
+* **Publishing Workflow:** Review AI proposals, verify screenshot attachments, and publish directly to social channels.
 
 ### 🚀 Buffer Multi-Channel Integration (Unplanned Feature)
 
