@@ -1,4 +1,7 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+
+puppeteer.use(StealthPlugin());
 
 let browserInstance = null;
 
@@ -9,8 +12,9 @@ let browserInstance = null;
 export const getBrowser = async () => {
     if (!browserInstance || !browserInstance.connected) {
         browserInstance = await puppeteer.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+            headless: 'new',
+            ignoreDefaultArgs: ["--enable-automation"],
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'],
         });
     }
     return browserInstance;
@@ -21,6 +25,28 @@ export const getBrowser = async () => {
  * Prefers <article>, falls back to <main>, then <body>.
  */
 export const scrapeArticle = async (url) => {
+    // 1. Intercept X/Twitter URLs to bypass headless browser blockers
+    const twitterRegex = /https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]+)\/status\/([0-9]+)/i;
+    const match = url.match(twitterRegex);
+
+    if (match) {
+        const handle = match[1];
+        const tweetId = match[2];
+        try {
+            const vxUrl = `https://api.vxtwitter.com/${handle}/status/${tweetId}`;
+            const response = await fetch(vxUrl);
+            if (!response.ok) {
+                throw new Error(`vxtwitter API returned ${response.status}`);
+            }
+            const data = await response.json();
+            return data.text || '';
+        } catch (error) {
+            console.error('vxtwitter fallback error:', error.message);
+            throw new Error('Failed to scrape the article.');
+        }
+    }
+
+    // 2. Default Puppeteer fallback
     let page;
     try {
         const browser = await getBrowser();
