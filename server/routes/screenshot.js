@@ -1,0 +1,47 @@
+import express from 'express';
+import { captureQuoteScreenshot } from '../services/screenshotService.js';
+import { uploadImage } from '../services/imageHostService.js';
+
+const router = express.Router();
+
+router.post('/', async (req, res) => {
+    try {
+        const { url, quoteText, author, date, coverImageUrl } = req.body;
+
+        if (!url) {
+            return res.status(400).json({ error: 'URL is required' });
+        }
+
+        // Extract domain from URL
+        let domain;
+        try {
+            domain = new URL(url).hostname.replace('www.', '');
+        } catch {
+            domain = '';
+        }
+
+        const attribution = { author: author || null, date: date || null, domain };
+
+        const result = await captureQuoteScreenshot(
+            url,
+            quoteText || null,
+            attribution,
+            coverImageUrl || undefined
+        );
+
+        // If result is a string, it's already a public URL (cover image shortcut)
+        if (typeof result === 'string') {
+            return res.json({ screenshotUrl: result });
+        }
+
+        // Otherwise it's a Buffer — upload to image host
+        const { url: imageUrl } = await uploadImage(result);
+        return res.json({ screenshotUrl: imageUrl });
+
+    } catch (error) {
+        console.error('Screenshot route error:', error.message);
+        res.status(500).json({ error: 'Failed to capture or upload screenshot' });
+    }
+});
+
+export default router;

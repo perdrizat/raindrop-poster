@@ -30,7 +30,7 @@ describe('aiService', () => {
             json: async () => ({ proposals: ['Tweet 1', 'Tweet 2', 'Tweet 3'] })
         });
 
-        const article = { title: 'Test', link: 'http://test.com', highlights: [] };
+        const article = { title: 'Test', link: 'http://test.com', highlight: '' };
         const proposals = await generateProposals(article, 'custom prompt');
 
         expect(globalThis.fetch).toHaveBeenCalledTimes(2);
@@ -41,8 +41,7 @@ describe('aiService', () => {
 
         expect(proposals).toEqual({
             proposals: ['Tweet 1', 'Tweet 2', 'Tweet 3'],
-            author: null,
-            selectedHighlight: null,
+            author: null
         });
     });
 
@@ -59,7 +58,7 @@ describe('aiService', () => {
             json: async () => ({ proposals: ['T1', 'T2', 'T3'] })
         });
 
-        const article = { title: 'Test 2', link: 'http://test2.com', highlights: [] };
+        const article = { title: 'Test 2', link: 'http://test2.com', highlight: '' };
         const proposals = await generateProposals(article, 'prompt');
 
         expect(globalThis.fetch).toHaveBeenCalledTimes(2);
@@ -68,8 +67,7 @@ describe('aiService', () => {
         }));
         expect(proposals).toEqual({
             proposals: ['T1', 'T2', 'T3'],
-            author: null,
-            selectedHighlight: null,
+            author: null
         });
     });
 
@@ -86,7 +84,7 @@ describe('aiService', () => {
             json: async () => ({ error: 'Venice API down' })
         });
 
-        const article = { title: 'Test', link: 'http://t.com', highlights: [] };
+        const article = { title: 'Test', link: 'http://t.com', highlight: '' };
 
         await expect(generateProposals(article, 'prompt')).rejects.toThrow('Venice API down');
     });

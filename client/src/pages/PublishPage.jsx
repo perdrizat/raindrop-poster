@@ -13,7 +13,6 @@ const PublishPage = ({ selectedTag, onSelectProposal }) => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [proposals, setProposals] = useState([]);
     const [extractedAuthor, setExtractedAuthor] = useState(null);
-    const [selectedHighlight, setSelectedHighlight] = useState(null);
     const [generationError, setGenerationError] = useState(null);
 
     const currentArticle = articles.length > 0 && currentIndex >= 0 && currentIndex < articles.length
@@ -32,7 +31,6 @@ const PublishPage = ({ selectedTag, onSelectProposal }) => {
             const results = await generateProposals(article, customPrompt);
             setProposals(results.proposals || []);
             setExtractedAuthor(results.author || null);
-            setSelectedHighlight(results.selectedHighlight || null);
         } catch (error) {
             setGenerationError(error.message || 'Failed to generate proposals.');
         } finally {
@@ -150,16 +148,14 @@ const PublishPage = ({ selectedTag, onSelectProposal }) => {
                         {currentArticle.link}
                     </a>
 
-                    {currentArticle.highlights && currentArticle.highlights.length > 0 && (
+                    {currentArticle.highlight && (
                         <div className="mt-4 pt-4 border-t border-dashed border-gray-200 dark:border-gray-700">
                             <h4 className="text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase mb-3">
-                                Highlights
+                                Highlight
                             </h4>
-                            <ul className="space-y-3 pl-4 list-disc text-gray-700 dark:text-gray-300 pr-2">
-                                {currentArticle.highlights.map((highlight, idx) => (
-                                    <li key={idx} className="leading-relaxed">"{highlight.text}"</li>
-                                ))}
-                            </ul>
+                            <blockquote className="pl-4 border-l-4 border-blue-500 text-gray-700 dark:text-gray-300 italic leading-relaxed">
+                                "{currentArticle.highlight}"
+                            </blockquote>
                         </div>
                     )}
                 </div>
@@ -207,7 +203,7 @@ const PublishPage = ({ selectedTag, onSelectProposal }) => {
                                             {proposal.length} characters
                                         </span>
                                         <button
-                                            onClick={() => onSelectProposal(proposal, { ...currentArticle, extractedAuthor }, selectedHighlight)}
+                                            onClick={() => onSelectProposal(proposal, { ...currentArticle, extractedAuthor })}
                                             className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
                                         >
                                             Review & Publish

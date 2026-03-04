@@ -56,7 +56,7 @@ describe('Venice API Routes', () => {
             axios.post.mockResolvedValueOnce({
                 data: {
                     choices: [
-                        { message: { content: '{"proposals":["Tweet 1","Tweet 2","Tweet 3"], "author":"Jane Doe", "selectedHighlight":"Best highlight text"}' } }
+                        { message: { content: '{"proposals":["Tweet 1","Tweet 2","Tweet 3"], "author":"Jane Doe"}' } }
                     ]
                 }
             });
@@ -64,7 +64,7 @@ describe('Venice API Routes', () => {
             const reqBody = {
                 articleText: 'Mock article text.',
                 prompt: 'Custom user prompt',
-                metadata: { title: 'Test', url: 'http://test.com', highlights: [{ text: 'Best highlight text' }] }
+                metadata: { title: 'Test', url: 'http://test.com', highlight: 'Best highlight text' }
             };
 
             const res = await request(app).post('/api/venice/generate').send(reqBody);
@@ -72,7 +72,7 @@ describe('Venice API Routes', () => {
             expect(res.status).toBe(200);
             expect(res.body.proposals).toHaveLength(3);
             expect(res.body.author).toBe('Jane Doe');
-            expect(res.body.selectedHighlight).toBe('Best highlight text');
+            expect(res.body.selectedHighlight).toBeUndefined(); // Verifying it correctly returns undefined since it's removed
             expect(axios.post).toHaveBeenCalledWith('https://api.venice.ai/api/v1/chat/completions', expect.any(Object), expect.any(Object));
         });
 

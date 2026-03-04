@@ -9,6 +9,7 @@ import veniceRoutes from './routes/venice.js';
 import scrapeRoutes from './routes/scrape.js';
 import publishRoutes from './routes/publish.js';
 import screenshotRoutes from './routes/screenshot.js';
+import imageRoutes from './routes/image.js';
 
 // Load env vars
 dotenv.config();
@@ -47,6 +48,7 @@ app.use('/api/venice', veniceRoutes);
 app.use('/api/scrape', scrapeRoutes);
 app.use('/api/publish', publishRoutes);
 app.use('/api/screenshot', screenshotRoutes);
+app.use('/api/imgbb', imageRoutes);
 
 // Basic health check endpoint
 app.get('/api/health', (req, res) => {

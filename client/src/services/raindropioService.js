@@ -34,13 +34,22 @@ export const fetchTaggedItems = async (tag) => {
         }
 
         return data.items.map(item => {
-            if ((!item.highlights || item.highlights.length === 0) && item.note) {
-                return {
-                    ...item,
-                    highlights: [{ text: item.note }]
-                };
+            let highlightText = '';
+            if (item.highlights && item.highlights.length > 0) {
+                highlightText = item.highlights[0].text;
+            } else if (item.note) {
+                highlightText = item.note;
             }
-            return item;
+
+            // Remove the raw Raindrop highlights array and note to clean up the object
+            const rest = { ...item };
+            delete rest.highlights;
+            delete rest.note;
+
+            return {
+                ...rest,
+                highlight: highlightText
+            };
         });
     } catch (err) {
         console.error("Error fetching tagged items:", err);

@@ -20,7 +20,6 @@
     "puppeteer": "^24.37.5",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "tesseract.js": "^7.0.0",
     "twitter-api-v2": "^1.29.0"
   },
   "devDependencies": {

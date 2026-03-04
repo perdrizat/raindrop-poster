@@ -54,11 +54,10 @@ Return only the raw JSON.`;
 CRITICAL INSTRUCTIONS:
 1. The user's specific "User Instructions (Objectives)" take absolute precedence over everything else regarding tone, style, and constraints.
 2. The proposals should be loosely based on the provided Highlights, utilizing the full Article Text for context.
-3. Length constraint: EACH post MUST be between 165 and 250 characters long.
+3. Length constraint: EACH post MUST be about 200 characters long.
 4. Do not sound like a bot. Avoid generic marketing speak ("In today's fast-paced world...").
 5. Use emojis sparingly (maximum 1 per post) unless the user requests otherwise.
 6. Also extract the Author's name from the Article Text. If you cannot find one, set it to null.
-7. From the provided Highlights, select the single most visually engaging one for a screenshot. Return it verbatim as "selectedHighlight". If there is only one highlight, use that. If there are no highlights, set it to null.
 
 Provide 3 distinct options using these specific archetypes to give the user variety:
 - Option 1 (The Insightful Hook): Focus on the core value, a surprising fact, or the "Aha!" moment from the article. Tone: Educational, helpful, authoritative.
@@ -72,11 +71,10 @@ You MUST output your response in STRICT JSON format exactly like this:
     "Option 2 text here...",
     "Option 3 text here..."
   ],
-  "author": "John Doe",
-  "selectedHighlight": "The exact text of the most engaging highlight"
+  "author": "John Doe"
 }
 
-Ensure you provide exactly 3 proposals in the JSON array, the extracted author, AND the selectedHighlight. Do not include markdown blocks like \`\`\`json. Return only the raw JSON.`;
+Ensure you provide exactly 3 proposals in the JSON array and the extracted author. Do not include markdown blocks like \`\`\`json. Return only the raw JSON.`;
         }
 
         const userPrompt = `
@@ -85,7 +83,7 @@ Title: ${metadata?.title || 'Unknown'}
 URL: ${metadata?.url || 'Unknown'}
 
 Highlights:
-${metadata?.highlights?.length > 0 ? metadata.highlights.map(h => `- ${h.text}`).join('\n') : 'None provided'}
+${metadata?.highlight || 'None provided'}
 
 User Instructions:
 ${prompt || 'Create engaging tweets.'}
@@ -109,7 +107,7 @@ Title: ${metadata?.title || 'Unknown'}
 URL: ${metadata?.url || 'Unknown'}
 
 Highlights:
-${metadata?.highlights?.length > 0 ? metadata.highlights.map(h => `- ${h.text}`).join('\n') : 'None provided'}
+${metadata?.highlight || 'None provided'}
 
 User Instructions (Objectives):
 ${prompt || 'Create engaging tweets.'}
@@ -154,7 +152,7 @@ ${articleText.substring(0, 100).replace(/\\n/g, ' ')}... [TRUNCATED ${articleTex
         if (metadata?.isHighlightSelection) {
             res.json({ highlight: parsed.highlight });
         } else {
-            res.json({ proposals: parsed.proposals, author: parsed.author, selectedHighlight: parsed.selectedHighlight || null });
+            res.json({ proposals: parsed.proposals, author: parsed.author });
         }
     } catch (error) {
         console.error('Venice API Generate Error:', error.response?.data || error.message);

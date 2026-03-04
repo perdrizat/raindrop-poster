@@ -26,13 +26,14 @@ describe('raindropioService', () => {
             const result = await fetchTaggedItems('important');
 
             expect(globalThis.fetch).toHaveBeenCalledWith('/api/raindropio/raindrops/0?search=' + encodeURIComponent('[{"key":"tag","val":"important"}]'));
-            expect(result).toEqual([{ id: 1, title: 'Item 1' }, { id: 2, title: 'Item 2' }]);
+            expect(result).toEqual([{ id: 1, title: 'Item 1', highlight: '' }, { id: 2, title: 'Item 2', highlight: '' }]);
         });
 
         it('should map the note field into a highlights array if highlights are missing', async () => {
             const mockItemsWithNote = [
                 { id: 1, title: 'No Highlight', note: 'This is a note fallback' },
-                { id: 2, title: 'Has Highlight', highlights: [{ text: 'Real highlight' }], note: 'Ignored note' }
+                { id: 2, title: 'Has Highlight', highlights: [{ text: 'Real highlight' }], note: 'Ignored note' },
+                { id: 3, title: 'No Highlight No Note' }
             ];
             globalThis.fetch.mockResolvedValueOnce({
                 ok: true,
@@ -44,8 +45,9 @@ describe('raindropioService', () => {
 
             const result = await fetchTaggedItems('test-tag');
 
-            expect(result[0].highlights).toEqual([{ text: 'This is a note fallback' }]);
-            expect(result[1].highlights).toEqual([{ text: 'Real highlight' }]);
+            expect(result[0].highlight).toEqual('This is a note fallback');
+            expect(result[1].highlight).toEqual('Real highlight');
+            expect(result[2].highlight).toEqual(''); // Added missing fallback case
         });
 
         it('should return empty array on failure or missing items array', async () => {

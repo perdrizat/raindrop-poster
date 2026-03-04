@@ -19,13 +19,13 @@ const mockArticles = [
         _id: 1,
         title: 'Article 1',
         link: 'https://example.com/1',
-        highlights: [{ text: 'Highlight 1' }]
+        highlight: 'Highlight 1'
     },
     {
         _id: 2,
         title: 'Article 2',
         link: 'https://example.com/2',
-        highlights: [{ text: 'Highlight 2A' }, { text: 'Highlight 2B' }]
+        highlight: 'Highlight 2A'
     }
 ];
 
@@ -86,7 +86,6 @@ describe('PublishPage', () => {
 
         expect(screen.getByText('Article 2')).toBeInTheDocument();
         expect(screen.getByText(/Highlight 2A/i)).toBeInTheDocument();
-        expect(screen.getByText(/Highlight 2B/i)).toBeInTheDocument();
 
         // Now on last item, older should be disabled
         expect(screen.getByRole('button', { name: /older/i })).toBeDisabled();

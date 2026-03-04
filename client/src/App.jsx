@@ -22,8 +22,8 @@ function App() {
     }
   }, [activeView]);
 
-  const handleSelectProposal = (proposal, article, selectedHighlight) => {
-    setConfirmationData({ proposal, article, selectedHighlight })
+  const handleSelectProposal = (proposal, article) => {
+    setConfirmationData({ proposal, article })
     setActiveView('confirmation')
   }
 
@@ -84,7 +84,6 @@ function App() {
           <ConfirmationPage
             proposal={confirmationData.proposal}
             article={confirmationData.article}
-            selectedHighlight={confirmationData.selectedHighlight}
             onBack={handleBackFromConfirmation}
             onNextPost={handleNextPost}
           />

@@ -29,7 +29,7 @@ export const generateProposals = async (article, customPrompt) => {
                 metadata: {
                     title: article.title,
                     url: article.link,
-                    highlights: article.highlights
+                    highlight: article.highlight
                 }
             })
         });
@@ -42,8 +42,7 @@ export const generateProposals = async (article, customPrompt) => {
         const data = await generateRes.json();
         return {
             proposals: data.proposals || [],
-            author: data.author || null,
-            selectedHighlight: data.selectedHighlight || null,
+            author: data.author || null
         };
 
     } catch (error) {

@@ -3,8 +3,10 @@ import { publishPost } from '../services/twitterService';
 import { loadSettings } from '../services/settingsService';
 import { updateBookmarkTags } from '../services/raindropioService';
 
-const ConfirmationPage = ({ proposal, article, selectedHighlight, onBack, onNextPost }) => {
+const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
     const [postContent, setPostContent] = useState(proposal);
+    const [quote, setQuote] = useState(article.highlight || '');
+    const [localQuote, setLocalQuote] = useState(article.highlight || '');
     const [screenshotUrl, setScreenshotUrl] = useState(null);
     const [isCapturing, setIsCapturing] = useState(false);
     const [captureError, setCaptureError] = useState(null);
@@ -19,7 +21,7 @@ const ConfirmationPage = ({ proposal, article, selectedHighlight, onBack, onNext
 
     // Auto-capture screenshot on mount
     useEffect(() => {
-        const captureKey = `${article.link}-${selectedHighlight || ''}`;
+        const captureKey = `${article.link}-${quote}`;
         if (prevCaptureRef.current === captureKey) return;
         prevCaptureRef.current = captureKey;
 
@@ -32,7 +34,7 @@ const ConfirmationPage = ({ proposal, article, selectedHighlight, onBack, onNext
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         url: article.link,
-                        quoteText: selectedHighlight || null,
+                        quoteText: quote || null,
                         author: article.extractedAuthor || article.author || null,
                         date: article.created || null,
                         coverImageUrl: article.cover || null,
@@ -54,7 +56,66 @@ const ConfirmationPage = ({ proposal, article, selectedHighlight, onBack, onNext
         };
 
         captureScreenshot();
-    }, [article, selectedHighlight]);
+    }, [article, quote]);
+
+    const handleImageUpload = async (file) => {
+        if (!file || !file.type.startsWith('image/')) return;
+
+        setIsCapturing(true);
+        setCaptureError(null);
+
+        try {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = async () => {
+                const base64Image = reader.result;
+                const response = await fetch('/api/imgbb/upload', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: base64Image })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to upload custom image');
+                }
+
+                const data = await response.json();
+                setScreenshotUrl(data.url);
+                setIsCapturing(false);
+            };
+            reader.onerror = () => {
+                throw new Error('Failed to read file');
+            };
+        } catch (error) {
+            console.error('Upload Error:', error);
+            setCaptureError(error.message);
+            setIsCapturing(false);
+        }
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        const file = e.dataTransfer.files[0];
+        handleImageUpload(file);
+    };
+
+    const handlePaste = (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+                const file = items[i].getAsFile();
+                handleImageUpload(file);
+                break;
+            }
+        }
+    };
+
+    useEffect(() => {
+        window.addEventListener('paste', handlePaste);
+        return () => window.removeEventListener('paste', handlePaste);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const handlePublish = async () => {
         setIsPublishing(true);
@@ -69,8 +130,8 @@ const ConfirmationPage = ({ proposal, article, selectedHighlight, onBack, onNext
             } else {
                 // No screenshot — include the quote in the text
                 const author = article.extractedAuthor || article.author;
-                const quote = selectedHighlight || article.title;
-                const attribution = author ? `Says ${author}: "${quote}"` : `"${quote}"`;
+                const fullQuote = quote || article.title;
+                const attribution = author ? `Says ${author}: "${fullQuote}"` : `"${fullQuote}"`;
                 fullText = `${postContent}\n\n${attribution}\n\nvia ${article.link}`;
             }
             const result = await publishPost(fullText, article.link, screenshotUrl, destinationId, bufferChannels);
@@ -127,13 +188,51 @@ const ConfirmationPage = ({ proposal, article, selectedHighlight, onBack, onNext
                         </div>
                     </div>
 
-                    {/* Screenshot Preview */}
+                    {/* Quote Text (Editable) */}
                     <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-5 border border-gray-200 dark:border-gray-700">
-                        <div className="flex items-center gap-2 mb-3">
+                        <label className="flex items-center gap-2 mb-3 cursor-pointer" htmlFor="quote-editor">
                             <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
                             </svg>
-                            <span className="text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase">Screenshot</span>
+                            <span className="text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase">Quote (Highlight)</span>
+                        </label>
+                        <textarea
+                            id="quote-editor"
+                            value={localQuote}
+                            onChange={(e) => setLocalQuote(e.target.value)}
+                            onBlur={() => setQuote(localQuote)}
+                            className="w-full bg-transparent border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md p-3 resize-y min-h-[80px] text-gray-800 dark:text-gray-200 leading-relaxed font-sans placeholder-gray-400 dark:placeholder-gray-500"
+                            placeholder="Quote text for screenshot..."
+                        />
+                    </div>
+
+                    {/* Screenshot Preview */}
+                    <div
+                        className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-5 border border-gray-200 dark:border-gray-700 transition-colors hover:border-blue-400 dark:hover:border-blue-500 relative"
+                        onDrop={handleDrop}
+                        onDragOver={(e) => e.preventDefault()}
+                    >
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                                <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                <span className="text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase">Screenshot</span>
+                            </div>
+
+                            <label className="cursor-pointer text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300">
+                                Upload Custom Image
+                                <input
+                                    type="file"
+                                    className="hidden"
+                                    accept="image/*"
+                                    onChange={(e) => handleImageUpload(e.target.files[0])}
+                                />
+                            </label>
+                        </div>
+
+                        <div className="text-xs text-center text-gray-400 dark:text-gray-500 mb-4 pb-4 border-b border-gray-200 dark:border-gray-700 border-dashed">
+                            Paste an image from clipboard or drag and drop to replace
                         </div>
 
                         {isCapturing ? (

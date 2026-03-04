@@ -158,4 +158,62 @@ describe('ConfirmationPage', () => {
             expect(screen.getByText(/Warning: Could not update tags in Raindrop.io/i)).toBeInTheDocument();
         });
     });
+
+    it('allows editing the quote and triggers a new screenshot capture on blur', async () => {
+        render(<ConfirmationPage {...defaultProps} article={{ ...defaultProps.article, highlight: 'Initial quote' }} />);
+
+        await waitFor(() => {
+            expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
+        });
+
+        expect(globalThis.fetch).toHaveBeenCalledWith('/api/screenshot', expect.objectContaining({
+            body: expect.stringContaining('Initial quote')
+        }));
+
+        const quoteTextarea = screen.getByLabelText(/Quote \(Highlight\)/i);
+        expect(quoteTextarea.value).toBe('Initial quote');
+
+        fireEvent.change(quoteTextarea, { target: { value: 'Updated quote text' } });
+        fireEvent.blur(quoteTextarea);
+
+        await waitFor(() => {
+            expect(globalThis.fetch).toHaveBeenCalledWith('/api/screenshot', expect.objectContaining({
+                body: expect.stringContaining('Updated quote text')
+            }));
+        });
+    });
+
+    it('allows uploading a custom screenshot via file selection and delegates to imgbb', async () => {
+        // Mock successful initial screenshot first
+        render(<ConfirmationPage {...defaultProps} />);
+
+        await waitFor(() => {
+            expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
+        });
+
+        // Setup the ImgBB fetch mock specifically for the upload endpoint
+        globalThis.fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ success: true, url: 'https://i.ibb.co/custom/uploaded.png' })
+        });
+
+        // Find the "Upload Custom Image" label/input
+        const fileInput = screen.getByLabelText(/Upload Custom Image/i);
+
+        // Simulate file upload
+        const file = new File(['mock-image-data'], 'custom.png', { type: 'image/png' });
+        fireEvent.change(fileInput, { target: { files: [file] } });
+
+        // Wait for the imgbb upload mock to be called
+        await waitFor(() => {
+            // Verify fetch to /api/imgbb/upload was sent
+            expect(globalThis.fetch).toHaveBeenCalledWith('/api/imgbb/upload', expect.objectContaining({
+                method: 'POST'
+            }));
+        });
+
+        // Verify the image source updated in the DOM
+        const img = screen.getByAltText('Quote screenshot');
+        expect(img.src).toBe('https://i.ibb.co/custom/uploaded.png');
+    });
 });
