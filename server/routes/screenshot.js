@@ -6,18 +6,20 @@ const router = express.Router();
 
 router.post('/', async (req, res) => {
     try {
-        const { url, quoteText, author, date, coverImageUrl } = req.body;
+        const { url, quoteText, author, date, domain: reqDomain, coverImageUrl } = req.body;
 
         if (!url) {
             return res.status(400).json({ error: 'URL is required' });
         }
 
-        // Extract domain from URL
-        let domain;
-        try {
-            domain = new URL(url).hostname.replace('www.', '');
-        } catch {
-            domain = '';
+        // Extract domain from URL or use provided domain
+        let domain = reqDomain;
+        if (domain === null || typeof domain === 'undefined') {
+            try {
+                domain = new URL(url).hostname.replace('www.', '');
+            } catch {
+                domain = '';
+            }
         }
 
         const attribution = { author: author || null, date: date || null, domain };

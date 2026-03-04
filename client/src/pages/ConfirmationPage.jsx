@@ -14,49 +14,66 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
     const [publishError, setPublishError] = useState(null);
     const [publishSuccessData, setPublishSuccessData] = useState(null);
     const [tagWarning, setTagWarning] = useState(null);
+
+    // Initial domain extraction
+    const initialDomain = (() => {
+        try {
+            return new URL(article.link).hostname.replace('www.', '');
+        } catch {
+            return '';
+        }
+    })();
+
+    const [author, setAuthor] = useState(article.extractedAuthor || article.author || '');
+    const [date, setDate] = useState(article.created ? new Date(article.created).toLocaleDateString() : '');
+    const [domain, setDomain] = useState(initialDomain);
+    const [bufferMode, setBufferMode] = useState('draft'); // 'draft' or 'queue'
+
     const destination = loadSettings().publishDestination === 'buffer' ? 'Buffer' : 'X (Twitter)';
     const destinationId = loadSettings().publishDestination || 'twitter';
     const bufferChannels = loadSettings().bufferChannels || [];
     const prevCaptureRef = useRef('');
 
-    // Auto-capture screenshot on mount
-    useEffect(() => {
-        const captureKey = `${article.link}-${quote}`;
-        if (prevCaptureRef.current === captureKey) return;
+    const captureScreenshot = async (force = false) => {
+        const captureKey = `${article.link}-${quote}-${author}-${date}-${domain}`;
+        if (!force && prevCaptureRef.current === captureKey) return;
         prevCaptureRef.current = captureKey;
 
-        const captureScreenshot = async () => {
-            setIsCapturing(true);
-            setCaptureError(null);
-            try {
-                const response = await fetch('/api/screenshot', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        url: article.link,
-                        quoteText: quote || null,
-                        author: article.extractedAuthor || article.author || null,
-                        date: article.created || null,
-                        coverImageUrl: article.cover || null,
-                    }),
-                });
+        setIsCapturing(true);
+        setCaptureError(null);
+        try {
+            const response = await fetch('/api/screenshot', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    url: article.link,
+                    quoteText: quote || null,
+                    author: author,
+                    date: date,
+                    domain: domain,
+                    coverImageUrl: article.cover || null,
+                }),
+            });
 
-                if (!response.ok) {
-                    throw new Error('Failed to capture screenshot');
-                }
-
-                const data = await response.json();
-                setScreenshotUrl(data.screenshotUrl);
-            } catch (err) {
-                console.error("Screenshot capture error:", err);
-                setCaptureError('Could not capture screenshot. You can still publish without an image.');
-            } finally {
-                setIsCapturing(false);
+            if (!response.ok) {
+                throw new Error('Failed to capture screenshot');
             }
-        };
 
+            const data = await response.json();
+            setScreenshotUrl(data.screenshotUrl);
+        } catch (err) {
+            console.error("Screenshot capture error:", err);
+            setCaptureError('Could not capture screenshot. You can still publish without an image.');
+        } finally {
+            setIsCapturing(false);
+        }
+    };
+
+    // Auto-capture screenshot ONLY on mount
+    useEffect(() => {
         captureScreenshot();
-    }, [article, quote]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const handleImageUpload = async (file) => {
         if (!file || !file.type.startsWith('image/')) return;
@@ -117,10 +134,14 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const handlePublish = async () => {
+    const handlePublish = async (overrideBufferMode = null) => {
         setIsPublishing(true);
         setPublishError(null);
         setTagWarning(null);
+        const modeToUse = overrideBufferMode || bufferMode;
+        if (overrideBufferMode) {
+            setBufferMode(overrideBufferMode);
+        }
         try {
             // Build post text
             let fullText;
@@ -129,12 +150,12 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
                 fullText = `${postContent}\n\n${article.link}`;
             } else {
                 // No screenshot — include the quote in the text
-                const author = article.extractedAuthor || article.author;
+                const attributionAuthor = author || article.extractedAuthor || article.author;
                 const fullQuote = quote || article.title;
-                const attribution = author ? `Says ${author}: "${fullQuote}"` : `"${fullQuote}"`;
+                const attribution = attributionAuthor ? `Says ${attributionAuthor}: "${fullQuote}"` : `"${fullQuote}"`;
                 fullText = `${postContent}\n\n${attribution}\n\nvia ${article.link}`;
             }
-            const result = await publishPost(fullText, article.link, screenshotUrl, destinationId, bufferChannels);
+            const result = await publishPost(fullText, article.link, screenshotUrl, destinationId, bufferChannels, modeToUse);
             setPublishSuccessData(result);
 
             // Epic 5: Update tags in Raindrop.io
@@ -201,9 +222,31 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
                             value={localQuote}
                             onChange={(e) => setLocalQuote(e.target.value)}
                             onBlur={() => setQuote(localQuote)}
-                            className="w-full bg-transparent border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md p-3 resize-y min-h-[80px] text-gray-800 dark:text-gray-200 leading-relaxed font-sans placeholder-gray-400 dark:placeholder-gray-500"
+                            className="w-full bg-transparent border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md p-3 resize-y min-h-[80px] text-gray-800 dark:text-gray-200 leading-relaxed font-sans placeholder-gray-400 dark:placeholder-gray-500 mb-4"
                             placeholder="Quote text for screenshot..."
                         />
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div>
+                                <label className="block text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase mb-1" htmlFor="author-input">Author</label>
+                                <input id="author-input" type="text" value={author} onChange={e => setAuthor(e.target.value)} onBlur={() => captureScreenshot()} className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md p-2 text-sm text-gray-800 dark:text-gray-200" placeholder="Author name" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase mb-1" htmlFor="date-input">Date</label>
+                                <input id="date-input" type="text" value={date} onChange={e => setDate(e.target.value)} onBlur={() => captureScreenshot()} className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md p-2 text-sm text-gray-800 dark:text-gray-200" placeholder="Publication date" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase mb-1" htmlFor="domain-input">Publication / Domain</label>
+                                <input id="domain-input" type="text" value={domain} onChange={e => setDomain(e.target.value)} onBlur={() => captureScreenshot()} className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md p-2 text-sm text-gray-800 dark:text-gray-200" placeholder="Domain name" />
+                            </div>
+                        </div>
+                        <div className="mt-4 flex justify-end">
+                            <button onClick={() => captureScreenshot(true)} disabled={isCapturing} className="inline-flex items-center text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors disabled:opacity-50">
+                                <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                Regenerate Screenshot
+                            </button>
+                        </div>
                     </div>
 
                     {/* Screenshot Preview */}
@@ -291,13 +334,34 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
                     </div>
                 ) : (
                     <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-800">
-                        <button
-                            onClick={handlePublish}
-                            disabled={isPublishing || isCapturing}
-                            className="inline-flex items-center justify-center rounded-md px-6 py-2.5 border border-transparent text-sm font-medium text-white shadow-sm transition-all duration-200 bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:bg-blue-400 disabled:dark:bg-blue-900/50 disabled:opacity-70 disabled:cursor-not-allowed"
-                        >
-                            {isPublishing ? 'Publishing...' : `Post to ${destination}`}
-                        </button>
+                        <div className="flex items-center gap-3">
+                            {destinationId === 'buffer' ? (
+                                <>
+                                    <button
+                                        onClick={() => handlePublish('draft')}
+                                        disabled={isPublishing || isCapturing}
+                                        className="inline-flex items-center justify-center rounded-md px-6 py-2.5 border border-transparent text-sm font-medium text-white shadow-sm transition-all duration-200 bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:bg-blue-400 disabled:dark:bg-blue-900/50 disabled:opacity-70 disabled:cursor-not-allowed"
+                                    >
+                                        {isPublishing && bufferMode === 'draft' ? 'Publishing...' : 'Save to Buffer Drafts'}
+                                    </button>
+                                    <button
+                                        onClick={() => handlePublish('queue')}
+                                        disabled={isPublishing || isCapturing}
+                                        className="inline-flex items-center justify-center rounded-md px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                        {isPublishing && bufferMode === 'queue' ? 'Publishing...' : 'Add to Top of Queue'}
+                                    </button>
+                                </>
+                            ) : (
+                                <button
+                                    onClick={() => handlePublish()}
+                                    disabled={isPublishing || isCapturing}
+                                    className="inline-flex items-center justify-center rounded-md px-6 py-2.5 border border-transparent text-sm font-medium text-white shadow-sm transition-all duration-200 bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:bg-blue-400 disabled:dark:bg-blue-900/50 disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
+                                    {isPublishing ? 'Publishing...' : `Post to ${destination}`}
+                                </button>
+                            )}
+                        </div>
                     </div>
                 )}
             </section>

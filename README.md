@@ -47,6 +47,8 @@ While the original [Product Requirements](spec/product_requirements.md) only spe
 
 You can now toggle your publishing destination in the Settings page to route generated threads directly to your Buffer queue. Furthermore, our Buffer client features **Multi-Channel Selection**, allowing you to deploy your queue items simultaneously to as many channels as you have configured (e.g. LinkedIn + Twitter + Mastodon in a single click) using the latest Buffer GraphQL API. This feature was added organically during development to provide better cross-platform support.
 
+> **Developer Note on Buffer API:** The system uses the modern [Buffer GraphQL API Specification](https://developers.buffer.com/reference.html#field-account) for all integrations.
+
 ## Documentation
 
 For historical functional requirements and technical details, see the [Product Requirements](spec/product_requirements.md) and [System Architecture](spec/system_architecture.md).

@@ -35,6 +35,7 @@ describe('twitterService', () => {
                 screenshotUrl: 'https://i.ibb.co/abc/shot.png',
                 destination: 'buffer',
                 targetChannels: ['channel1'],
+                bufferMode: 'draft',
             }),
         });
 

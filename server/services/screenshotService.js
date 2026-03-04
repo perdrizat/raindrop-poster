@@ -1,4 +1,5 @@
 import { getBrowser } from './scraperService.js';
+import { findQuoteInDOM } from './highlighter.js';
 
 /**
  * Captures a square screenshot of a quote within an article.
@@ -52,10 +53,20 @@ export const captureQuoteScreenshot = async (articleUrl, quoteText, attribution,
         }
 
 
-
         await page.setRequestInterception(true);
         page.on('request', req => {
-            if (req.url().includes('wombat.js') || req.url().includes('banner.js')) {
+            const reqUrl = req.url();
+            try {
+                const host = new URL(reqUrl).hostname;
+                if (host === 'papers.ssrn.com' || host === 'ssrn.com') {
+                    // Prevent escaping the web archive to the live Cloudflare site
+                    req.abort();
+                    return;
+                }
+            } catch (e) { }
+
+            if (reqUrl.includes('wombat.js') || reqUrl.includes('banner.js')) {
+                // Wombat overrides Function.apply and causes Maximum call stack size exceeded during page.evaluate
                 req.abort();
             } else {
                 req.continue();
@@ -64,230 +75,15 @@ export const captureQuoteScreenshot = async (articleUrl, quoteText, attribution,
 
         await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-        // Wait for potential Cloudflare challenge
         if (process.env.NODE_ENV !== 'test') {
             await new Promise(resolve => setTimeout(resolve, 8000));
         }
 
-        if (match) {
-            // Wait for redirect to X.com to finish safely
-            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => { });
-
-            await page.evaluate(() => {
-                const hideFixedDivs = () => {
-                    const fixedElements = document.querySelectorAll('div[style*="position: fixed"], div[style*="position: absolute"]');
-                    fixedElements.forEach(el => {
-                        const text = el.innerText.toLowerCase();
-                        if (text.includes('cookies') || text.includes('open app') || text.includes('not now') || text.includes('log in') || text.includes('sign up')) {
-                            el.style.display = 'none';
-                            el.style.visibility = 'hidden';
-                            el.style.opacity = '0';
-                        }
-                    });
-                    const layers = document.getElementById('layers');
-                    if (layers) layers.style.display = 'none';
-                };
-
-                hideFixedDivs();
-                setTimeout(hideFixedDivs, 1000);
-                setTimeout(hideFixedDivs, 2000);
-
-                const expandTweet = () => {
-                    const spans = Array.from(document.querySelectorAll('span'));
-                    const showMore = spans.find(s => s.innerText === 'Show more');
-                    if (showMore) showMore.click();
-                };
-                expandTweet();
-                setTimeout(expandTweet, 1000);
-            });
-            // Allow animations to finish after clicking "Show more"
-            if (process.env.NODE_ENV !== 'test') {
-                await new Promise(r => setTimeout(r, 2000));
-            }
-        }
-
         // Step 1: Find and highlight the quote
-        const findResult = await page.evaluate(async (quote) => {
-            try {
-                if (!quote) return { found: false, rect: null };
+        const findResult = await page.evaluate(findQuoteInDOM, quoteText);
 
-                const normalize = (text) => text.replace(/\s+/g, ' ').trim().toLowerCase().replace(/[‘’`´]/g, "'").replace(/[“”«»]/g, '"');
-                const normalizedQuote = normalize(quote);
-
-                // Include all alphanumeric words, even short ones, for sequential matching
-                const regex = /[a-z0-9]+/g;
-                let match;
-                const quoteWords = [];
-                while ((match = regex.exec(normalizedQuote)) !== null) {
-                    quoteWords.push(match[0]);
-                }
-
-                if (quoteWords.length === 0) return { found: false, rect: null };
-
-                // Collect all text nodes
-                const rootNode = document.querySelector('[data-testid="tweetText"]') || document.querySelector('article') || document.body;
-                const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT, {
-                    acceptNode: function (node) {
-                        const parent = node.parentNode;
-                        if (!parent) return NodeFilter.FILTER_REJECT;
-                        if (parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE' || parent.tagName === 'NOSCRIPT') {
-                            return NodeFilter.FILTER_REJECT;
-                        }
-                        return NodeFilter.FILTER_ACCEPT;
-                    }
-                }, false);
-
-                const globalTokens = [];
-                let node;
-                while (node = walker.nextNode()) {
-                    const rawText = node.nodeValue;
-                    let m;
-                    const nodeRegex = /[a-z0-9]+/ig;
-                    while ((m = nodeRegex.exec(rawText)) !== null) {
-                        globalTokens.push({
-                            word: m[0].toLowerCase(),
-                            node: node,
-                            index: m.index,
-                            length: m[0].length
-                        });
-                    }
-                }
-
-                let maxScore = 0;
-                let bestStart = 0;
-                let bestEnd = 0;
-
-                // Better algorithm: For each token in the document that matches the first word of the quote
-                // check how many subsequent words match in order with some allowed gaps.
-                for (let i = 0; i < globalTokens.length; i++) {
-                    // Find a decent starting word (could be the first few words of the quote)
-                    const firstQuoteWord = quoteWords[0];
-                    const secondQuoteWord = quoteWords.length > 1 ? quoteWords[1] : null;
-
-                    if (globalTokens[i].word !== firstQuoteWord && globalTokens[i].word !== secondQuoteWord) continue;
-
-                    let quoteIdx = 0;
-                    let matchCount = 0;
-                    let currentEnd = i;
-                    let misses = 0;
-
-                    for (let j = i; j < Math.min(globalTokens.length, i + quoteWords.length + 20); j++) {
-                        if (quoteIdx >= quoteWords.length) break;
-
-                        if (globalTokens[j].word === quoteWords[quoteIdx]) {
-                            matchCount++;
-                            quoteIdx++;
-                            currentEnd = j;
-                            misses = 0;
-                        } else if (globalTokens[j].word === quoteWords[quoteIdx + 1]) {
-                            // skipped one word in the quote
-                            matchCount++;
-                            quoteIdx += 2;
-                            currentEnd = j;
-                            misses = 0;
-                        } else {
-                            misses++;
-                            if (misses > 10) break; // too many consecutive misses between matches
-                        }
-                    }
-
-                    // Score is heavily weighted by sequential matches
-                    const score = matchCount;
-
-                    if (score > maxScore) {
-                        maxScore = score;
-                        bestStart = i;
-                        bestEnd = currentEnd;
-                    }
-                }
-
-                // If we found a reasonable match (e.g. at least 30% of the quote words)
-                if (maxScore > quoteWords.length * 0.3) {
-                    const startToken = globalTokens[bestStart];
-                    const endToken = globalTokens[bestEnd];
-
-                    const startNode = startToken.node;
-                    const endNode = endToken.node;
-
-                    const range = document.createRange();
-                    range.setStart(startNode, startToken.index);
-                    range.setEnd(endNode, endToken.index + endToken.length);
-
-                    if (startNode.parentElement) {
-                        startNode.parentElement.scrollIntoView({ behavior: 'instant', block: 'center' });
-                    }
-
-                    await new Promise(resolve => setTimeout(resolve, 600));
-
-                    let rects = [];
-                    const clientRectsList = range.getClientRects();
-                    for (let i = 0; i < clientRectsList.length; i++) {
-                        rects.push(clientRectsList[i]);
-                    }
-
-                    if (rects.length === 0) {
-                        console.log("Range API failed, falling back to mark tags");
-                        const nodesToWrap = new Set();
-                        for (let k = bestStart; k <= bestEnd; k++) {
-                            nodesToWrap.add(globalTokens[k].node);
-                        }
-
-                        nodesToWrap.forEach(n => {
-                            const mark = document.createElement('mark');
-                            mark.style.backgroundColor = '#FFEB3B';
-                            mark.style.color = 'black';
-                            if (n.parentNode) {
-                                n.parentNode.replaceChild(mark, n);
-                                mark.appendChild(n);
-                            }
-                            const r = mark.getBoundingClientRect();
-                            if (r.width > 0 && r.height > 0) {
-                                rects.push(r);
-                            }
-                        });
-                    } else {
-                        const style = document.createElement('style');
-                        style.textContent = `
-                            ::selection {
-                                background-color: #FFEB3B !important;
-                                color: black !important;
-                            }
-                        `;
-                        document.head.appendChild(style);
-
-                        const selection = window.getSelection();
-                        selection.removeAllRanges();
-                        selection.addRange(range);
-                    }
-
-                    if (rects.length === 0) {
-                        console.log("No rects found even after fallback");
-                        return { found: false, rect: null };
-                    }
-
-                    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-                    for (const r of rects) {
-                        if (r.width === 0 || r.height === 0) continue;
-                        if (r.x < minX) minX = r.x;
-                        if (r.y < minY) minY = r.y;
-                        if (r.x + r.width > maxX) maxX = r.x + r.width;
-                        if (r.y + r.height > maxY) maxY = r.y + r.height;
-                    }
-
-
-
-                    return { found: true, rect: { x: minX, y: minY, width: maxX - minX, height: maxY - minY }, debugInfo: { maxScore, bestStart, bestEnd, startWord: startToken.word, endWord: endToken.word, quoteLength: quoteWords.length } };
-                }
-
-
-
-                return { found: false, rect: null };
-            } catch (e) {
-                return { found: false, rect: null, debugError: e.stack };
-            }
-        }, quoteText);
-
-        if (findResult.debugError) {
+        if (process.env.DEBUG_HIGHLIGHT === 'true') {
+            console.log("findResult:", findResult);
         }
 
         // Step 2: Compute square padded clip region

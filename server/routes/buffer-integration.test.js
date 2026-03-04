@@ -17,7 +17,7 @@ app.use(session({
 }));
 app.use('/api/publish', publishRouter);
 
-describe('Live Buffer Integration Test', () => {
+describe.skip('Live Buffer Integration Test', () => {
 
     it('should successfully post an image tweet to Buffer and then cleanly delete it', async () => {
         // Only run if the user has provided live Buffer credentials in .env

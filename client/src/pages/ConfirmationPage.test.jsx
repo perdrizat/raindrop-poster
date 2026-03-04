@@ -80,7 +80,8 @@ describe('ConfirmationPage', () => {
                 'https://example.com/hooks',
                 'https://i.ibb.co/abc/shot.png',
                 'twitter',
-                []
+                [],
+                'draft'
             );
         });
 
@@ -100,7 +101,7 @@ describe('ConfirmationPage', () => {
             expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
         });
 
-        const button = await screen.findByRole('button', { name: /Post to Buffer/i });
+        const button = await screen.findByRole('button', { name: /Save to Buffer Drafts/i });
         fireEvent.click(button);
 
         await waitFor(() => {
@@ -109,7 +110,8 @@ describe('ConfirmationPage', () => {
                 'https://example.com/hooks',
                 'https://i.ibb.co/abc/shot.png',
                 'buffer',
-                ['linkedin-1']
+                ['linkedin-1'],
+                'draft'
             );
         });
 
@@ -159,7 +161,7 @@ describe('ConfirmationPage', () => {
         });
     });
 
-    it('allows editing the quote and triggers a new screenshot capture on blur', async () => {
+    it('allows editing the quote and triggers a new screenshot capture on regenerate click', async () => {
         render(<ConfirmationPage {...defaultProps} article={{ ...defaultProps.article, highlight: 'Initial quote' }} />);
 
         await waitFor(() => {
@@ -175,6 +177,9 @@ describe('ConfirmationPage', () => {
 
         fireEvent.change(quoteTextarea, { target: { value: 'Updated quote text' } });
         fireEvent.blur(quoteTextarea);
+
+        const regenerateBtn = screen.getByRole('button', { name: /Regenerate Screenshot/i });
+        fireEvent.click(regenerateBtn);
 
         await waitFor(() => {
             expect(globalThis.fetch).toHaveBeenCalledWith('/api/screenshot', expect.objectContaining({

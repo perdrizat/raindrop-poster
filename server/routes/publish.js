@@ -14,7 +14,7 @@ router.post('/', async (req, res) => {
         }
 
         if (destination === 'buffer') {
-            const { targetChannels } = req.body;
+            const { targetChannels, bufferMode = 'draft' } = req.body;
 
             if (!process.env.BUFFER_ACCESS_TOKEN || !process.env.BUFFER_PROFILE_ID) {
                 return res.status(401).json({ error: 'Buffer credentials not configured' });
@@ -51,7 +51,8 @@ router.post('/', async (req, res) => {
                         channelId: channelId,
                         text: text,
                         schedulingType: "automatic",
-                        mode: "shareNext"
+                        mode: "shareNext",
+                        saveToDraft: bufferMode === 'draft'
                     };
 
                     // Attach image if screenshot URL is provided

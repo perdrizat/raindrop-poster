@@ -204,4 +204,44 @@ describe('POST /api/publish', () => {
         const callArgs = axios.post.mock.calls[0][1];
         expect(callArgs.variables.input.assets).toBeUndefined();
     });
+
+    it('should post correctly to Buffer Draft queue', async () => {
+        process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
+        process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
+
+        axios.post.mockImplementation(() =>
+            Promise.resolve({ data: { data: { createPost: { post: { id: 'mock-draft-id' } } } } })
+        );
+
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
+
+        const response = await request(testApp)
+            .post('/api/publish')
+            .send({
+                text: 'Draft test',
+                articleUrl: 'https://example.com',
+                destination: 'buffer',
+                bufferMode: 'draft',
+                targetChannels: ['channel1']
+            });
+
+        expect(response.status).toBe(200);
+
+        // Verify it sets shareNext and saveToDraft
+        expect(axios.post).toHaveBeenCalledWith(
+            'https://api.buffer.com/1/graphql',
+            expect.objectContaining({
+                variables: expect.objectContaining({
+                    input: expect.objectContaining({
+                        channelId: 'channel1',
+                        saveToDraft: true,
+                        mode: "shareNext"
+                    })
+                })
+            }),
+            expect.anything()
+        );
+    });
 });
