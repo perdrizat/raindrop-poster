@@ -33,8 +33,13 @@ The application has been successfully built and supports the following core work
 * **User Setup & Configuration:** Authenticate with external services via OAuth (Twitter, Raindrop.io) and define custom AI posting objectives.
 * **Content Ingestion:** Automatically fetch and navigate an article queue from Raindrop.io based on tags.
 * **AI-Powered Generation:** Leverage the Venice LLM to automatically generate concise (~250 chars) tweet proposals based on the article's text and highlights.
-* **Automated Screenshots:** Automatically generate beautiful, context-aware square screenshots of the exact text highlights using Playwright and upload them via ImgBB to attach to posts.
+* **Automated Screenshots:** Automatically generate beautiful, context-aware square screenshots of the exact text highlights using Puppeteer (`puppeteer-extra` with stealth plugins) and upload them via ImgBB to attach to posts.
+  * **Quote Editing:** Edit the scraped quote on the fly and watch the screenshot seamlessly regenerate.
+  * **Intelligent Viewport Scaling:** Screenshots gracefully handle extremely tall DOM content (e.g. deep Twitter threads) by virtually expanding the viewport up to 8000px to capture quotes anywhere on the page without clipping.
+  * **Anti-Bot Evasion:** Robust headless scraping that bypasses strict Cloudflare Turnstile blocks (e.g. on SSRN) using stealth plugins, custom request interception, and automatic fallbacks to Wayback Machine CDNs.
+  * **Custom Image Uploading:** Don't like the generated image? Easily drag-and-drop or paste your own images directly into the Review UI.
 * **Publishing Workflow:** Review AI proposals, verify screenshot attachments, and publish directly to social channels.
+* **X/Twitter Extraction Bypass:** Advanced regex routing transparently swaps restricted `x.com` / `twitter.com` headless payloads with the public `vxtwitter` API to cleanly scrape tweet text without authentication.
 
 ### 🚀 Buffer Multi-Channel Integration (Unplanned Feature)
 
