@@ -3,7 +3,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ConfirmationPage from './ConfirmationPage';
-import { publishPost } from '../services/twitterService';
+import { publishPost } from '../services/publishService';
 import { loadSettings } from '../services/settingsService';
 import { updateBookmarkTags } from '../services/raindropioService';
 
@@ -11,7 +11,7 @@ vi.mock('../services/settingsService', () => ({
     loadSettings: vi.fn()
 }));
 
-vi.mock('../services/twitterService', () => ({
+vi.mock('../services/publishService', () => ({
     publishPost: vi.fn()
 }));
 
@@ -35,7 +35,7 @@ describe('ConfirmationPage', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        loadSettings.mockReturnValue({ publishDestination: 'twitter', selectedTag: 'to-tweet' });
+        loadSettings.mockReturnValue({ publishDestination: 'buffer', bufferChannels: ['linkedin-1'], selectedTag: 'to-tweet' });
         updateBookmarkTags.mockResolvedValue(true);
 
         // Mock the screenshot fetch
@@ -62,41 +62,11 @@ describe('ConfirmationPage', () => {
     });
 
     it('calls publishPost when the post button is clicked', async () => {
-        publishPost.mockResolvedValueOnce({ success: true, url: "https://twitter.com/post/1" });
-
-        render(<ConfirmationPage {...defaultProps} />);
-
-        // Wait for screenshot to load
-        await waitFor(() => {
-            expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
-        });
-
-        const button = await screen.findByRole('button', { name: /Post to X \(Twitter\)/i });
-        fireEvent.click(button);
-
-        await waitFor(() => {
-            expect(publishPost).toHaveBeenCalledWith(
-                expect.stringContaining("This is my generated post proposal"),
-                'https://example.com/hooks',
-                'https://i.ibb.co/abc/shot.png',
-                'twitter',
-                [],
-                'draft'
-            );
-        });
-
-        await waitFor(() => {
-            expect(screen.getByText(/View on X \(Twitter\)/i)).toBeInTheDocument();
-        });
-    });
-
-    it('calls publishPost with buffer destination when set in settings', async () => {
-        loadSettings.mockReturnValue({ publishDestination: 'buffer', bufferChannels: ['linkedin-1'] });
-
         publishPost.mockResolvedValueOnce({ success: true, url: "https://buffer.com/update/1" });
 
         render(<ConfirmationPage {...defaultProps} />);
 
+        // Wait for screenshot to load
         await waitFor(() => {
             expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
         });
@@ -121,7 +91,7 @@ describe('ConfirmationPage', () => {
     });
 
     it('updates bookmark tags on successful publish and shows next post button', async () => {
-        publishPost.mockResolvedValueOnce({ success: true, url: "https://twitter.com/post/1" });
+        publishPost.mockResolvedValueOnce({ success: true, url: "https://buffer.com/update/1" });
 
         render(<ConfirmationPage {...defaultProps} />);
 
@@ -129,7 +99,7 @@ describe('ConfirmationPage', () => {
             expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
         });
 
-        const button = await screen.findByRole('button', { name: /Post to X \(Twitter\)/i });
+        const button = await screen.findByRole('button', { name: /Save to Buffer Drafts/i });
         fireEvent.click(button);
 
         await waitFor(() => {
@@ -144,7 +114,7 @@ describe('ConfirmationPage', () => {
     });
 
     it('shows a warning message if updating bookmark tags fails after successful publish', async () => {
-        publishPost.mockResolvedValueOnce({ success: true, url: "https://twitter.com/post/1" });
+        publishPost.mockResolvedValueOnce({ success: true, url: "https://buffer.com/update/1" });
         updateBookmarkTags.mockResolvedValueOnce(false);
 
         render(<ConfirmationPage {...defaultProps} />);
@@ -153,7 +123,7 @@ describe('ConfirmationPage', () => {
             expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
         });
 
-        const button = await screen.findByRole('button', { name: /Post to X \(Twitter\)/i });
+        const button = await screen.findByRole('button', { name: /Save to Buffer Drafts/i });
         fireEvent.click(button);
 
         await waitFor(() => {

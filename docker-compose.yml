@@ -1,0 +1,12 @@
+services:
+  raindrop-poster:
+    build: .
+    ports:
+      - "80:80"
+    volumes:
+      - raindrop-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  raindrop-data:
+    driver: local

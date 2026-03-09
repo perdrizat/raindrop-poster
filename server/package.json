@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run --config vitest.config.js",
+    "test:e2e": "vitest run --config vitest.e2e.config.js",
     "dev": "node --watch index.js"
   },
   "keywords": [],
@@ -15,7 +16,6 @@
     "connect-sqlite3": "^0.9.16",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
-    "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
     "puppeteer": "^24.37.5",

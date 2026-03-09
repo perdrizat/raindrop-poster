@@ -12,9 +12,10 @@ let browserInstance = null;
 export const getBrowser = async () => {
     if (!browserInstance || !browserInstance.connected) {
         browserInstance = await puppeteer.launch({
-            headless: 'new',
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null,
+            headless: true,
             ignoreDefaultArgs: ["--enable-automation"],
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'],
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled', '--font-render-hinting=none'],
         });
     }
     return browserInstance;

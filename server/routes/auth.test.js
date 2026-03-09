@@ -150,9 +150,20 @@ describe('Auth Routes', () => {
 
         it('GET /api/auth/imgbb/test should return success when key is set', async () => {
             process.env.IMGBB_API_KEY = 'test_key';
+            axios.post.mockResolvedValueOnce({
+                data: {
+                    success: true,
+                    data: {
+                        url: 'https://i.ibb.co/mock/image.png',
+                        urlViewer: 'https://imgbb.com/viewer/mock'
+                    }
+                }
+            });
+
             const res = await request(app).get('/api/auth/imgbb/test');
             expect(res.status).toBe(200);
             expect(res.body.success).toBe(true);
+            expect(res.body.imageUrl).toBeDefined();
         });
 
         it('GET /api/auth/imgbb/test should return 401 when key is missing', async () => {

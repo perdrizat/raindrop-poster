@@ -34,7 +34,7 @@ describe('scraperService (Puppeteer)', () => {
         const text = await scrapeArticle('https://example.com/article');
 
         expect(puppeteer.launch).toHaveBeenCalledWith(
-            expect.objectContaining({ headless: 'new' })
+            expect.objectContaining({ headless: true })
         );
         expect(text).toBe('Article text content');
     });

@@ -47,6 +47,14 @@ The application publishes exclusively through **Buffer**, supporting **Multi-Cha
 
 > **Developer Note on Buffer API:** The system uses the modern [Buffer GraphQL API Specification](https://developers.buffer.com/reference.html#field-account) for all integrations.
 
-## Documentation
+## 🐳 Docker Deployment
 
-For historical functional requirements and technical details, see the [Product Requirements](spec/product_requirements.md) and [System Architecture](spec/system_architecture.md).
+To run Raindrop Poster as a self-hosted service:
+
+```bash
+docker compose up -d
+```
+
+The app will be available at `http://localhost` (port 80). On first launch, the **Setup Wizard** will guide you through entering your API keys (Raindrop.io, Venice AI, Buffer, ImgBB). All credentials and sessions are stored in a local SQLite database, persisted in a Docker volume across container restarts.
+
+> **Note:** You'll need a Raindrop.io OAuth app with its redirect URI set to `http://yourdomain/api/auth/raindropio/callback`.

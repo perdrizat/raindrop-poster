@@ -67,7 +67,7 @@ router.get('/buffer/test', async (req, res) => {
             query,
             variables: {
                 input: {
-                    organizationId: process.env.BUFFER_PROFILE_ID
+                    organizationId: profileId
                 }
             }
         }, {
@@ -114,7 +114,34 @@ router.get('/imgbb/test', async (req, res) => {
     if (!key) {
         return res.status(401).json({ error: 'ImgBB API key not configured' });
     }
-    res.json({ success: true, message: 'ImgBB API key is configured' });
+
+    try {
+        // The ImgBB API doesn't have a "status" or "profile" endpoint, only an upload endpoint.
+        // To validate the key, we upload a 1x1 transparent PNG that expires in 60 seconds.
+        const testImageBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+        const params = new URLSearchParams();
+        params.append('image', testImageBase64);
+        params.append('name', 'connection_test_raindrop');
+
+        const response = await axios.post(
+            `https://api.imgbb.com/1/upload?key=${key}&expiration=60`,
+            params
+        );
+
+        if (response.data && response.data.success) {
+            res.json({
+                success: true,
+                message: 'ImgBB API key is valid and connected',
+                imageUrl: response.data.data.urlViewer || response.data.data.url,
+                imageName: response.data.data.image?.filename || 'test_image.png'
+            });
+        } else {
+            res.status(502).json({ error: 'ImgBB API rejected the test upload' });
+        }
+    } catch (error) {
+        const errMsg = error.response?.data?.error?.message || error.message || 'Failed to connect to ImgBB API';
+        res.status(502).json({ error: `ImgBB API Error: ${errMsg}` });
+    }
 });
 
 

@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import session from 'express-session';
 import cookieParser from 'cookie-parser';
-import dotenv from 'dotenv';
+import crypto from 'crypto';
 import authRoutes from './routes/auth.js';
 import raindropioRoutes from './routes/raindropio.js';
 import veniceRoutes from './routes/venice.js';
@@ -12,14 +12,12 @@ import screenshotRoutes from './routes/screenshot.js';
 import imageRoutes from './routes/image.js';
 import systemRoutes from './routes/system.js';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import connectSqlite3 from 'connect-sqlite3';
-import { getDb } from './services/db.js';
+import { getDb, getSetting, setSetting } from './services/db.js';
 
-// Load env vars
-dotenv.config();
-
-// Ensure DB is initialized
+// Ensure DB is initialized (no .env file needed — all config via Setup page)
 getDb();
 
 const SQLiteStore = connectSqlite3(session);
@@ -38,17 +36,33 @@ app.use(cookieParser());
 // Trust proxy if we are behind one (useful for dev containers or deployments)
 app.set('trust proxy', 1);
 
+// Auto-generate and persist SESSION_SECRET on first boot
+const getSessionSecret = async () => {
+    let secret = await getSetting('SESSION_SECRET');
+    if (!secret) {
+        secret = crypto.randomBytes(32).toString('hex');
+        await setSetting('SESSION_SECRET', secret);
+        console.log('Generated and persisted a new SESSION_SECRET.');
+    }
+    return secret;
+};
+
 // Configure sessions to persist OAuth tokens
+const sessionSecret = await getSessionSecret();
 app.use(session({
     store: new SQLiteStore({
         db: 'raindrop-sessions.sqlite',
-        dir: process.cwd()
+        dir: (() => {
+            const dataDir = process.env.DATA_DIR || process.cwd();
+            if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+            return dataDir;
+        })()
     }),
-    secret: process.env.SESSION_SECRET || 'fallback-secret-for-dev-only',
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: process.env.NODE_ENV === 'production',
+        secure: false, // Set to false to allow OAuth sessions over HTTP (common in local Docker/self-hosted)
         httpOnly: true,
         sameSite: 'lax',
         maxAge: 24 * 60 * 60 * 1000 // 24 hours

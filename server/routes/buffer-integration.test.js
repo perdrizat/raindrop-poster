@@ -2,11 +2,8 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import session from 'express-session';
-import dotenv from 'dotenv';
 import axios from 'axios';
 import publishRouter from './publish.js';
-
-dotenv.config();
 
 const app = express();
 app.use(express.json());

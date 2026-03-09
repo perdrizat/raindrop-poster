@@ -38,12 +38,11 @@ describe('settingsService', () => {
         const settings = loadSettings();
         expect(settings).toEqual({
             providerConnections: {
-                raindropio: false,
-                twitter: false
+                raindropio: false
             },
             selectedTag: '',
-            postingObjectives: 'Propose engaging Twitter posts that help me increase my follower count',
-            publishDestination: 'twitter',
+            postingObjectives: 'Propose engaging posts that help me increase my follower count',
+            publishDestination: 'buffer',
             bufferChannels: []
         });
     });
@@ -55,7 +54,7 @@ describe('settingsService', () => {
         const settings = loadSettings();
 
         expect(settings.selectedTag).toBe('my-tag');
-        expect(settings.publishDestination).toBe('twitter'); // Fallback default
+        expect(settings.publishDestination).toBe('buffer'); // Fallback default
         expect(settings.bufferChannels).toEqual([]); // Fallback default
     });
 

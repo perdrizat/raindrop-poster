@@ -1,5 +1,6 @@
 import sqlite3 from 'sqlite3';
 import path from 'path';
+import fs from 'fs';
 
 let dbInstance = null;
 let customDbPath = null;
@@ -12,7 +13,9 @@ export const getDb = (dbPath = null) => {
     }
 
     if (!dbInstance) {
-        customDbPath = dbPath || path.join(process.cwd(), 'raindrop.sqlite');
+        const dataDir = process.env.DATA_DIR || process.cwd();
+        if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+        customDbPath = dbPath || path.join(dataDir, 'raindrop.sqlite');
 
         // We use synchronous-style operations for settings via better-sqlite3 or wrapped sqlite3
         // Since we installed 'sqlite3', we will wrap basic methods.

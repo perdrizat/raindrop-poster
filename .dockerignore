@@ -1,0 +1,12 @@
+node_modules
+.git
+.env
+client/dist
+.DS_Store
+.agent
+docker-compose.yml
+spec/
+*.sqlite
+*.test.*
+*.spec.*
+*.log

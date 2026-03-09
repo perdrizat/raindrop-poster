@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import axios from 'axios';
 
 vi.mock('axios');
+vi.mock('./db.js', () => ({
+    getSetting: vi.fn()
+}));
+import { getSetting } from './db.js';
 
 describe('imageHostService', () => {
     beforeEach(() => {
@@ -28,16 +32,14 @@ describe('imageHostService', () => {
 
         expect(result.url).toBe('https://i.ibb.co/abc123/screenshot.png');
         expect(axios.post).toHaveBeenCalledWith(
-            expect.stringContaining('https://api.imgbb.com/1/upload'),
-            expect.any(Object),
-            expect.objectContaining({
-                headers: { 'Content-Type': 'multipart/form-data' },
-            })
+            expect.stringContaining('https://api.imgbb.com/1/upload?key=test-api-key'),
+            expect.any(URLSearchParams)
         );
     });
 
     it('should throw if IMGBB_API_KEY is not set', async () => {
         delete process.env.IMGBB_API_KEY;
+        getSetting.mockResolvedValueOnce(null);
 
         const { uploadImage } = await import('./imageHostService.js');
 

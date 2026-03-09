@@ -1,5 +1,5 @@
 import axios from 'axios';
-import FormData from 'form-data';
+
 import { getSetting } from './db.js';
 
 /**
@@ -16,18 +16,19 @@ export const uploadImage = async (pngBuffer) => {
     try {
         const base64Image = pngBuffer.toString('base64');
 
-        const form = new FormData();
-        form.append('image', base64Image);
+        // Use URLSearchParams for application/x-www-form-urlencoded
+        // This is more reliable than manual multipart headers and avoids extra dependencies
+        const params = new URLSearchParams();
+        params.append('image', base64Image);
 
         const response = await axios.post(
             `https://api.imgbb.com/1/upload?key=${apiKey}&expiration=86400`,
-            form,
-            { headers: { 'Content-Type': 'multipart/form-data' } }
+            params
         );
 
         return { url: response.data.data.url };
     } catch (error) {
-        console.error('Image upload error:', error.message);
+        console.error('Image upload error:', error.response?.data || error.message);
         throw new Error('Failed to upload image');
     }
 };

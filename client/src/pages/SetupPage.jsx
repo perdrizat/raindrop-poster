@@ -14,7 +14,7 @@ const SetupPage = () => {
     });
     const [tags, setTags] = useState([]);
     const [selectedTag, setSelectedTag] = useState(() => loadSettings().selectedTag);
-    const [publishDestination, setPublishDestination] = useState(() => loadSettings().publishDestination);
+    const [publishDestination] = useState('buffer'); // Hardcoded to Buffer
     const [objectives, setObjectives] = useState(() => loadSettings().postingObjectives);
 
     // BYOK Config State
@@ -25,7 +25,6 @@ const SetupPage = () => {
     const [bufferProfileId, setBufferProfileId] = useState('');
     const [imgbbKey, setImgbbKey] = useState('');
 
-    const [imgbbSaving, setImgbbSaving] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState('');
     const [testMessage, setTestMessage] = useState(null);
@@ -90,9 +89,9 @@ const SetupPage = () => {
         }
     }, [connections.raindropio]); // Only re-run if raindrop connection status changes
 
-    // 3. Fetch Buffer channels when Buffer is selected and connected
+    // 3. Fetch Buffer channels when Buffer is connected
     useEffect(() => {
-        if (publishDestination === 'buffer' && connections.buffer) {
+        if (connections.buffer) {
             const getChannels = async () => {
                 try {
                     const response = await fetch('/api/auth/buffer/test');
@@ -106,7 +105,7 @@ const SetupPage = () => {
             };
             getChannels();
         }
-    }, [publishDestination, connections.buffer]);
+    }, [connections.buffer]);
 
     // Handlers
     const handleConnect = (providerId) => {
@@ -126,7 +125,16 @@ const SetupPage = () => {
             if (providerId === 'raindropio') msg = `Raindrop connected as ${result.user}`;
             if (providerId === 'venice') msg = `Venice connected (${result.modelsCount} models found)`;
             if (providerId === 'buffer') msg = `Buffer connected — ${result.channelCount} channel(s) on ${result.services}`;
-            if (providerId === 'imgbb') msg = `ImgBB API key is configured ✓`;
+            if (providerId === 'imgbb') {
+                msg = result.imageUrl ? (
+                    <span>
+                        ImgBB upload test:{' '}
+                        <a href={result.imageUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-200">
+                            {result.imageName || 'image.png'}
+                        </a> ✓
+                    </span>
+                ) : `ImgBB API key is valid and connected ✓`;
+            }
             setTestMessage({ type: 'success', text: msg });
         }
 
@@ -134,30 +142,6 @@ const SetupPage = () => {
         setTimeout(() => setTestMessage(null), 5000);
     };
 
-    const handleSaveImgbbKey = async () => {
-        if (!imgbbKey.trim()) return;
-        setImgbbSaving(true);
-        try {
-            const response = await fetch('/api/auth/imgbb/key', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ apiKey: imgbbKey }),
-            });
-            if (response.ok) {
-                setConnections(prev => ({ ...prev, imgbb: true }));
-                setTestMessage({ type: 'success', text: 'ImgBB API key saved!' });
-                setImgbbKey('');
-                setTimeout(() => setTestMessage(null), 3000);
-            } else {
-                const data = await response.json();
-                setTestMessage({ type: 'error', text: data.error || 'Failed to save key' });
-            }
-        } catch {
-            setTestMessage({ type: 'error', text: 'Network error saving ImgBB key' });
-        } finally {
-            setImgbbSaving(false);
-        }
-    };
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -180,13 +164,23 @@ const SetupPage = () => {
             });
 
             if (success) {
-                setSaveMessage('Settings saved securely! You may need to refresh or connect your accounts.');
+                setSaveMessage('Settings saved securely! Channels and connections will now update.');
+
+                // Re-fetch auth status to immediately reflect newly saved keys (like Buffer)
+                const authStatus = await checkAuthStatus();
+                setConnections(prev => ({
+                    ...prev,
+                    venice: authStatus.venice,
+                    buffer: authStatus.buffer,
+                    imgbb: authStatus.imgbb
+                }));
+
                 // Optionally clear the inputs if you don't want to leave passwords on screen
                 setRaindropClientSecret('');
             } else {
                 setSaveMessage('Error saving preferences to local storage.');
             }
-        } catch (error) {
+        } catch {
             setSaveMessage('Error saving configurations to backend.');
         } finally {
             setIsSaving(false);
@@ -281,31 +275,7 @@ const SetupPage = () => {
                     <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 flex flex-col space-y-4 transition-colors duration-300">
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white">Bookmarks</h2>
 
-                        <div className="flex flex-col space-y-2 flex-grow">
-                            <label htmlFor="tag-select" className="text-sm font-medium text-gray-700 dark:text-gray-300">Raindrop Tag (Queue)</label>
-                            <div className="relative">
-                                <select
-                                    id="tag-select"
-                                    value={selectedTag}
-                                    onChange={(e) => setSelectedTag(e.target.value)}
-                                    disabled={!connections.raindropio || tags.length === 0}
-                                    className="block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2.5 pl-3 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-black dark:text-white disabled:opacity-50 transition-colors duration-200"
-                                >
-                                    {!connections.raindropio && <option value="">Connect first...</option>}
-                                    {connections.raindropio && tags.length === 0 && <option value="">Loading...</option>}
-                                    {connections.raindropio && tags.map(tag => (
-                                        <option key={tag} value={tag}>{tag}</option>
-                                    ))}
-                                </select>
-                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
-                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-800">
+                        <div className="flex flex-col space-y-4 flex-grow">
                             <ProviderButton
                                 providerName="Raindrop.io"
                                 providerId="raindropio"
@@ -313,12 +283,36 @@ const SetupPage = () => {
                                 onConnect={handleConnect}
                                 onTest={handleTest}
                             />
+
+                            <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
+                                <label htmlFor="tag-select" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Raindrop Tag (Queue)</label>
+                                <div className="relative">
+                                    <select
+                                        id="tag-select"
+                                        value={selectedTag}
+                                        onChange={(e) => setSelectedTag(e.target.value)}
+                                        disabled={!connections.raindropio || tags.length === 0}
+                                        className="block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2.5 pl-3 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-black dark:text-white disabled:opacity-50 transition-colors duration-200"
+                                    >
+                                        {!connections.raindropio && <option value="">Connect first...</option>}
+                                        {connections.raindropio && tags.length === 0 && <option value="">Loading...</option>}
+                                        {connections.raindropio && tags.map(tag => (
+                                            <option key={tag} value={tag}>{tag}</option>
+                                        ))}
+                                    </select>
+                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </section>
 
                     {/* COLUMN 2: Connections */}
                     <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 flex flex-col space-y-4 transition-colors duration-300">
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">Connection Health</h2>
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">Services</h2>
 
                         <div className="flex flex-col space-y-4 flex-grow">
                             <ProviderButton
@@ -330,7 +324,7 @@ const SetupPage = () => {
                             />
 
                             <ProviderButton
-                                providerName="ImgBB Image Host"
+                                providerName="ImgBB"
                                 providerId="imgbb"
                                 isConnected={connections.imgbb}
                                 onConnect={() => { }}
@@ -343,37 +337,17 @@ const SetupPage = () => {
                     <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 flex flex-col space-y-4 transition-colors duration-300">
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white">Publishing</h2>
 
-                        <div className="flex flex-col space-y-2 flex-grow">
-                            <label htmlFor="destination-select" className="text-sm font-medium text-gray-700 dark:text-gray-300">Publish Destination</label>
-                            <div className="relative">
-                                <select
-                                    id="destination-select"
-                                    value={publishDestination}
-                                    onChange={(e) => setPublishDestination(e.target.value)}
-                                    className="block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2.5 pl-3 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-black dark:text-white transition-colors duration-200"
-                                >
-                                    <option value="buffer">Buffer</option>
-                                </select>
-                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
-                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                </div>
-                            </div>
-                        </div>
+                        <div className="flex flex-col space-y-4 flex-grow">
+                            <ProviderButton
+                                providerName="Buffer.com"
+                                providerId="buffer"
+                                isConnected={connections.buffer}
+                                onConnect={() => { }} // Controlled by BYOK input fields
+                                onTest={handleTest}
+                            />
 
-                        <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-800">
-                            {publishDestination === 'buffer' && (
-                                <ProviderButton
-                                    providerName="Buffer.com"
-                                    providerId="buffer"
-                                    isConnected={connections.buffer}
-                                    onConnect={() => { }} // Controlled by backend env var
-                                    onTest={handleTest}
-                                />
-                            )}
-                            {publishDestination === 'buffer' && availableChannels.length > 0 && (
-                                <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+                            {availableChannels.length > 0 && (
+                                <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
                                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">Buffer Channels</label>
                                     <div className="space-y-2">
                                         {availableChannels.map(ch => (

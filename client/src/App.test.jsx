@@ -1,11 +1,13 @@
-import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import App from './App';
 import * as settingsService from './services/settingsService';
 
 vi.mock('./services/settingsService');
+vi.mock('./services/systemService', () => ({
+    getSystemStatus: vi.fn().mockResolvedValue({ isConfigured: true }),
+}));
 vi.mock('./pages/SetupPage', () => ({ default: () => <div data-testid="setup-page">Setup Page</div> }));
 vi.mock('./pages/PublishPage', () => ({ default: () => <div data-testid="publish-page">Publish Page</div> }));
 vi.mock('./pages/ConfirmationPage', () => ({ default: () => <div data-testid="confirmation-page">Confirmation Page</div> }));
@@ -30,28 +32,35 @@ describe('App routing and navigation (Backlog Side Quests)', () => {
         window.history.replaceState(null, '', '/');
     });
 
-    it('defaults to SetupPage if selectedTag is missing', () => {
+    it('defaults to SetupPage if selectedTag is missing', async () => {
         settingsService.loadSettings.mockReturnValue({});
         render(<App />);
-        expect(screen.getByTestId('setup-page')).toBeInTheDocument();
+        await waitFor(() => {
+            expect(screen.getByTestId('setup-page')).toBeInTheDocument();
+        });
         expect(screen.queryByTestId('publish-page')).not.toBeInTheDocument();
     });
 
-    it('defaults to PublishPage (Queue) if selectedTag is configured', () => {
+    it('defaults to PublishPage (Queue) if selectedTag is configured', async () => {
         settingsService.loadSettings.mockReturnValue({ selectedTag: 'important' });
         render(<App />);
-        expect(screen.getByTestId('publish-page')).toBeInTheDocument();
+        await waitFor(() => {
+            expect(screen.getByTestId('publish-page')).toBeInTheDocument();
+        });
         expect(screen.queryByTestId('setup-page')).not.toBeInTheDocument();
     });
 
-    it('Navigation buttons should be ordered Queue (left) then Settings (right)', () => {
+    it('Navigation buttons should be ordered Queue (left) then Setup (right)', async () => {
         settingsService.loadSettings.mockReturnValue({});
         render(<App />);
+        await waitFor(() => {
+            expect(screen.getByTestId('setup-page')).toBeInTheDocument();
+        });
         const navButtons = screen.getAllByRole('button').filter(b =>
-            b.textContent === 'Queue' || b.textContent === 'Settings'
+            b.textContent === 'Queue' || b.textContent === 'Setup'
         );
         expect(navButtons[0]).toHaveTextContent('Queue');
-        expect(navButtons[1]).toHaveTextContent('Settings');
+        expect(navButtons[1]).toHaveTextContent('Setup');
     });
 
     it('Clicking the "Raindrop Poster" header should navigate to Queue', async () => {
@@ -59,8 +68,10 @@ describe('App routing and navigation (Backlog Side Quests)', () => {
         const user = userEvent.setup();
         render(<App />);
 
-        // Starts on setup because no tag
-        expect(screen.getByTestId('setup-page')).toBeInTheDocument();
+        // Wait for async initialization to complete
+        await waitFor(() => {
+            expect(screen.getByTestId('setup-page')).toBeInTheDocument();
+        });
 
         // Click header
         await user.click(screen.getByText('Raindrop Poster'));
