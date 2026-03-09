@@ -2,4 +2,5 @@ node_modules
 .env
 .DS_Store
 *.log
+*.sqlite
 debug-raindrop.js

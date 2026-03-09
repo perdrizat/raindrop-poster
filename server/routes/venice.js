@@ -1,11 +1,13 @@
 import express from 'express';
 import axios from 'axios';
 
+import { getSetting } from '../services/db.js';
+
 const router = express.Router();
 
 router.get('/test', async (req, res) => {
     try {
-        const apiKey = process.env.VENICE_API_KEY;
+        const apiKey = process.env.VENICE_API_KEY || await getSetting('VENICE_API_KEY');
         if (!apiKey) {
             return res.status(401).json({ error: 'System VENICE_API_KEY is not configured' });
         }
@@ -28,7 +30,7 @@ router.get('/test', async (req, res) => {
 
 router.post('/generate', async (req, res) => {
     try {
-        const apiKey = process.env.VENICE_API_KEY;
+        const apiKey = process.env.VENICE_API_KEY || await getSetting('VENICE_API_KEY');
         if (!apiKey) {
             return res.status(401).json({ error: 'System VENICE_API_KEY is not configured' });
         }

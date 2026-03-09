@@ -1,6 +1,6 @@
 import express from 'express';
-
 import axios from 'axios';
+import { getSetting } from '../services/db.js';
 
 const router = express.Router();
 
@@ -12,9 +12,9 @@ router.post('/upload', async (req, res) => {
             return res.status(400).json({ error: 'Image data is required' });
         }
 
-        const apiKey = process.env.IMGBB_API_KEY;
+        const apiKey = process.env.IMGBB_API_KEY || await getSetting('IMGBB_API_KEY');
         if (!apiKey) {
-            console.error('IMGBB_API_KEY is missing from environment variables');
+            console.error('IMGBB_API_KEY is missing from environment variables or settings');
             return res.status(500).json({ error: 'Failed to upload image to ImgBB' });
             // We return generic 500 in test mock to match snapshot
         }

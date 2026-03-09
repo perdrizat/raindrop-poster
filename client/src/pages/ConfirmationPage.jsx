@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { publishPost } from '../services/twitterService';
+import { publishPost } from '../services/publishService';
 import { loadSettings } from '../services/settingsService';
 import { updateBookmarkTags } from '../services/raindropioService';
 
@@ -29,8 +29,8 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
     const [domain, setDomain] = useState(initialDomain);
     const [bufferMode, setBufferMode] = useState('draft'); // 'draft' or 'queue'
 
-    const destination = loadSettings().publishDestination === 'buffer' ? 'Buffer' : 'X (Twitter)';
-    const destinationId = loadSettings().publishDestination || 'twitter';
+    const destination = 'Buffer';
+    const destinationId = 'buffer';
     const bufferChannels = loadSettings().bufferChannels || [];
     const prevCaptureRef = useRef('');
 
@@ -335,32 +335,20 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
                 ) : (
                     <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-800">
                         <div className="flex items-center gap-3">
-                            {destinationId === 'buffer' ? (
-                                <>
-                                    <button
-                                        onClick={() => handlePublish('draft')}
-                                        disabled={isPublishing || isCapturing}
-                                        className="inline-flex items-center justify-center rounded-md px-6 py-2.5 border border-transparent text-sm font-medium text-white shadow-sm transition-all duration-200 bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:bg-blue-400 disabled:dark:bg-blue-900/50 disabled:opacity-70 disabled:cursor-not-allowed"
-                                    >
-                                        {isPublishing && bufferMode === 'draft' ? 'Publishing...' : 'Save to Buffer Drafts'}
-                                    </button>
-                                    <button
-                                        onClick={() => handlePublish('queue')}
-                                        disabled={isPublishing || isCapturing}
-                                        className="inline-flex items-center justify-center rounded-md px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
-                                    >
-                                        {isPublishing && bufferMode === 'queue' ? 'Publishing...' : 'Add to Top of Queue'}
-                                    </button>
-                                </>
-                            ) : (
-                                <button
-                                    onClick={() => handlePublish()}
-                                    disabled={isPublishing || isCapturing}
-                                    className="inline-flex items-center justify-center rounded-md px-6 py-2.5 border border-transparent text-sm font-medium text-white shadow-sm transition-all duration-200 bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:bg-blue-400 disabled:dark:bg-blue-900/50 disabled:opacity-70 disabled:cursor-not-allowed"
-                                >
-                                    {isPublishing ? 'Publishing...' : `Post to ${destination}`}
-                                </button>
-                            )}
+                            <button
+                                onClick={() => handlePublish('draft')}
+                                disabled={isPublishing || isCapturing}
+                                className="inline-flex items-center justify-center rounded-md px-6 py-2.5 border border-transparent text-sm font-medium text-white shadow-sm transition-all duration-200 bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:bg-blue-400 disabled:dark:bg-blue-900/50 disabled:opacity-70 disabled:cursor-not-allowed"
+                            >
+                                {isPublishing && bufferMode === 'draft' ? 'Publishing...' : 'Save to Buffer Drafts'}
+                            </button>
+                            <button
+                                onClick={() => handlePublish('queue')}
+                                disabled={isPublishing || isCapturing}
+                                className="inline-flex items-center justify-center rounded-md px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
+                            >
+                                {isPublishing && bufferMode === 'queue' ? 'Publishing...' : 'Add to Top of Queue'}
+                            </button>
                         </div>
                     </div>
                 )}

@@ -1,7 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import axios from 'axios';
-import { TwitterApi } from 'twitter-api-v2';
+import { getSetting, setSetting } from '../services/db.js';
 
 const router = express.Router();
 
@@ -15,38 +15,41 @@ function generateState() {
     return crypto.randomBytes(16).toString('hex');
 }
 
-// --- GET CURRENT SESSION STATUS ---
-router.get('/status', (req, res) => {
-    res.json({
-        twitter: !!req.session.twitter,
-        raindropio: !!req.session.raindropio,
-        venice: !!process.env.VENICE_API_KEY,
-        buffer: !!process.env.BUFFER_ACCESS_TOKEN,
-        imgbb: !!process.env.IMGBB_API_KEY,
-    });
-});
+// Helper to determine the base URL of the server dynamically based on the request.
+// In dev, it might be localhost:3001 or localhost:8080. In prod, it's the real domain.
+function getServerBaseUrl(req) {
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.headers.host; // e.g., 'localhost:8080' or 'example.com'
+    return `${protocol}://${host}`;
+}
 
-// --- TWITTER API SMOKE TEST ---
-router.get('/twitter/test', async (req, res) => {
-    try {
-        if (!req.session.twitter || !req.session.twitter.accessToken) {
-            return res.status(401).json({ error: 'Not authenticated with Twitter' });
-        }
-
-        const client = new TwitterApi(req.session.twitter.accessToken);
-        const user = await client.v2.me();
-
-        res.json({ success: true, username: user.data.username, name: user.data.name });
-    } catch (error) {
-        console.error('Twitter API Test Error:', error.data || error.message);
-        res.status(502).json({ error: 'Failed to connect to Twitter API' });
+// Helper to determine where to redirect the user after successful login
+function getFrontendRedirectUrl(req) {
+    // In production, the backend and frontend are served from the same domain
+    if (process.env.NODE_ENV === 'production') {
+        return `${getServerBaseUrl(req)}/setup`;
     }
+    // In dev, the Vite frontend is usually on 5173
+    return 'http://localhost:5173/setup';
+}
+
+// --- GET CURRENT SESSION STATUS ---
+router.get('/status', async (req, res) => {
+    res.json({
+        raindropio: !!(req.session.raindropio || await getSetting('RAINDROPIO_ACCESS_TOKEN')),
+        venice: !!(process.env.VENICE_API_KEY || await getSetting('VENICE_API_KEY')),
+        buffer: !!(process.env.BUFFER_ACCESS_TOKEN || await getSetting('BUFFER_ACCESS_TOKEN')),
+        imgbb: !!(process.env.IMGBB_API_KEY || await getSetting('IMGBB_API_KEY')),
+    });
 });
 
 // --- BUFFER API SMOKE TEST ---
 router.get('/buffer/test', async (req, res) => {
     try {
-        if (!process.env.BUFFER_ACCESS_TOKEN || !process.env.BUFFER_PROFILE_ID) {
+        const token = process.env.BUFFER_ACCESS_TOKEN || await getSetting('BUFFER_ACCESS_TOKEN');
+        const profileId = process.env.BUFFER_PROFILE_ID || await getSetting('BUFFER_PROFILE_ID');
+
+        if (!token || !profileId) {
             return res.status(401).json({ error: 'Not authenticated with Buffer' });
         }
 
@@ -69,7 +72,7 @@ router.get('/buffer/test', async (req, res) => {
             }
         }, {
             headers: {
-                'Authorization': `Bearer ${process.env.BUFFER_ACCESS_TOKEN}`,
+                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             }
         });
@@ -96,17 +99,19 @@ router.get('/buffer/test', async (req, res) => {
 });
 
 // --- IMGBB API KEY ---
-router.post('/imgbb/key', (req, res) => {
+router.post('/imgbb/key', async (req, res) => {
     const { apiKey } = req.body;
     if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
         return res.status(400).json({ error: 'API key is required' });
     }
+    await setSetting('IMGBB_API_KEY', apiKey.trim());
     process.env.IMGBB_API_KEY = apiKey.trim();
     res.json({ success: true });
 });
 
 router.get('/imgbb/test', async (req, res) => {
-    if (!process.env.IMGBB_API_KEY) {
+    const key = process.env.IMGBB_API_KEY || await getSetting('IMGBB_API_KEY');
+    if (!key) {
         return res.status(401).json({ error: 'ImgBB API key not configured' });
     }
     res.json({ success: true, message: 'ImgBB API key is configured' });
@@ -115,37 +120,21 @@ router.get('/imgbb/test', async (req, res) => {
 
 // --- INITIALIZE OAUTH FLOWS ---
 
-router.get('/:provider', (req, res) => {
+router.get('/:provider', async (req, res) => {
     const { provider } = req.params;
     const state = generateState();
     req.session[`${provider}State`] = state; // Store state in session to verify on callback
 
     switch (provider) {
-        case 'twitter': {
-            // Twitter OAuth 2.0 with PKCE
-            const client = new TwitterApi({
-                clientId: process.env.TWITTER_CLIENT_ID,
-                clientSecret: process.env.TWITTER_CLIENT_SECRET,
-            });
-
-            const { url, codeVerifier, state: twitterState } = client.generateOAuth2AuthLink(
-                process.env.TWITTER_REDIRECT_URI,
-                { scope: ['tweet.read', 'tweet.write', 'users.read', 'offline.access'] }
-            );
-
-            // Store the PKCE verifier and state in the session
-            req.session.twitterVerifier = codeVerifier;
-            req.session.twitterState = twitterState;
-
-            return res.redirect(url);
-        }
-
         case 'raindropio': {
             // Raindrop.io OAuth 2.0 (No PKCE required, standard auth code flow)
-            const clientId = process.env.RAINDROPIO_CLIENT_ID;
-            const redirectUri = encodeURIComponent(process.env.RAINDROPIO_REDIRECT_URI);
+            const clientId = process.env.RAINDROPIO_CLIENT_ID || await getSetting('RAINDROPIO_CLIENT_ID');
+            const redirectUri = encodeURIComponent(process.env.RAINDROPIO_REDIRECT_URI || `${getServerBaseUrl(req)}/api/auth/raindropio/callback`);
             const url = `https://raindrop.io/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}`;
-            return res.redirect(url);
+
+            return req.session.save(() => {
+                res.redirect(url);
+            });
         }
 
         default:
@@ -170,37 +159,6 @@ router.get('/:provider/callback', async (req, res) => {
 
     try {
         switch (provider) {
-            case 'twitter': {
-                const storedState = req.session.twitterState;
-                const storedVerifier = req.session.twitterVerifier;
-
-                if (!storedState || !storedVerifier || state !== storedState) {
-                    return res.status(400).send('OAuth session mismatch or expired.');
-                }
-
-                const client = new TwitterApi({
-                    clientId: process.env.TWITTER_CLIENT_ID,
-                    clientSecret: process.env.TWITTER_CLIENT_SECRET,
-                });
-
-                // Exchange the authorization code for an access token
-                const { client: loggedClient, accessToken, refreshToken, expiresIn } = await client.loginWithOAuth2({
-                    code: code.toString(),
-                    codeVerifier: storedVerifier,
-                    redirectUri: process.env.TWITTER_REDIRECT_URI,
-                });
-
-                // Store tokens in the user's session
-                req.session.twitter = {
-                    accessToken,
-                    refreshToken,
-                    expiresAt: Date.now() + (expiresIn * 1000)
-                };
-
-                // Redirect back to the frontend setup page
-                return res.redirect('http://localhost:5173/setup?success=twitter');
-            }
-
             case 'raindropio': {
                 const storedState = req.session.raindropioState;
                 if (state !== storedState) {
@@ -209,12 +167,16 @@ router.get('/:provider/callback', async (req, res) => {
 
                 let response;
                 try {
+                    const clientId = process.env.RAINDROPIO_CLIENT_ID || await getSetting('RAINDROPIO_CLIENT_ID');
+                    const clientSecret = process.env.RAINDROPIO_CLIENT_SECRET || await getSetting('RAINDROPIO_CLIENT_SECRET');
+                    const redirectUri = process.env.RAINDROPIO_REDIRECT_URI || `${getServerBaseUrl(req)}/api/auth/raindropio/callback`;
+
                     response = await axios.post('https://raindrop.io/oauth/access_token', {
-                        client_id: process.env.RAINDROPIO_CLIENT_ID,
-                        client_secret: process.env.RAINDROPIO_CLIENT_SECRET,
+                        client_id: clientId,
+                        client_secret: clientSecret,
                         grant_type: 'authorization_code',
                         code,
-                        redirect_uri: process.env.RAINDROPIO_REDIRECT_URI
+                        redirect_uri: redirectUri
                     });
                     console.log("RAINDROP RESPONSE", response.data);
                 } catch (rdError) {
@@ -239,7 +201,19 @@ router.get('/:provider/callback', async (req, res) => {
                     expiresAt: Date.now() + (response.data.expires_in * 1000)
                 };
 
-                return res.redirect('http://localhost:5173/setup?success=raindropio');
+                // Store globally in Settings for single-user persistence
+                try {
+                    console.log('Attempting to save RAINDROPIO_ACCESS_TOKEN to global Settings...');
+                    await setSetting('RAINDROPIO_ACCESS_TOKEN', response.data.access_token);
+                    if (response.data.refresh_token) await setSetting('RAINDROPIO_REFRESH_TOKEN', response.data.refresh_token);
+                    console.log('Successfully saved RAINDROPIO_ACCESS_TOKEN');
+                } catch (dbErr) {
+                    console.error('CRITICAL: Failed to save Raindrop tokens to global Settings', dbErr);
+                }
+
+                return req.session.save(() => {
+                    res.redirect(`${getFrontendRedirectUrl(req)}?success=raindropio`);
+                });
             }
 
             default:

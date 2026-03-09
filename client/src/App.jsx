@@ -4,6 +4,7 @@ import PublishPage from './pages/PublishPage'
 import ConfirmationPage from './pages/ConfirmationPage'
 import ThemeToggle from './components/ThemeToggle'
 import { loadSettings } from './services/settingsService'
+import { getSystemStatus } from './services/systemService'
 
 function App() {
   const [confirmationData, setConfirmationData] = useState(null)
@@ -14,13 +15,36 @@ function App() {
     if (path === '/queue') return 'publish';
     return settings.selectedTag ? 'publish' : 'setup';
   })
+  const [isSystemConfigured, setIsSystemConfigured] = useState(true); // Assume true initially to prevent flash of setup
+  const [isInitializing, setIsInitializing] = useState(true);
 
   React.useEffect(() => {
+    const checkSystemStatus = async () => {
+      try {
+        const status = await getSystemStatus();
+        setIsSystemConfigured(status.isConfigured);
+        if (!status.isConfigured) {
+          setActiveView('setup');
+        }
+      } catch (error) {
+        console.error("Failed to check system status:", error);
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+    checkSystemStatus();
+  }, []);
+
+  React.useEffect(() => {
+    if (isSystemConfigured === false) {
+      // Enforcement: never allow leaving setup if system is unconfigured
+      if (activeView !== 'setup') setActiveView('setup');
+    }
     const path = activeView === 'setup' ? '/setup' : '/queue';
     if (window.location.pathname !== path) {
       window.history.pushState(null, '', path);
     }
-  }, [activeView]);
+  }, [activeView, isSystemConfigured]);
 
   const handleSelectProposal = (proposal, article) => {
     setConfirmationData({ proposal, article })
@@ -35,6 +59,14 @@ function App() {
   const handleNextPost = () => {
     setConfirmationData(null)
     setActiveView('publish')
+  }
+
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
   }
 
   return (
@@ -55,7 +87,10 @@ function App() {
           <nav className="flex space-x-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
             <button
               onClick={() => setActiveView('publish')}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeView === 'publish' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
+              disabled={!isSystemConfigured}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors 
+                ${activeView === 'publish' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}
+                ${!isSystemConfigured ? 'opacity-50 cursor-not-allowed hidden sm:block' : ''}`}
             >
               Queue
             </button>
@@ -63,7 +98,7 @@ function App() {
               onClick={() => setActiveView('setup')}
               className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeView === 'setup' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
             >
-              Settings
+              Setup
             </button>
           </nav>
           <ThemeToggle />

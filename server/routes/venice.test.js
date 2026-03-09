@@ -3,6 +3,7 @@ import request from 'supertest';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import veniceRoutes from './venice.js';
 import axios from 'axios';
+import { setSetting } from '../services/db.js';
 
 vi.mock('axios');
 
@@ -11,9 +12,10 @@ app.use(express.json());
 app.use('/api/venice', veniceRoutes);
 
 describe('Venice API Routes', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
         vi.clearAllMocks();
         delete process.env.VENICE_API_KEY;
+        await setSetting('VENICE_API_KEY', '');
     });
 
     describe('GET /api/venice/test', () => {

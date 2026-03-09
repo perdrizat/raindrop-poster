@@ -1,30 +1,31 @@
 import express from 'express';
-import { TwitterApi } from 'twitter-api-v2';
 import axios from 'axios';
+import { getSetting } from '../services/db.js';
 
 const router = express.Router();
 
 router.post('/', async (req, res) => {
     try {
-        const destination = req.body.destination || 'twitter';
         const { text, articleUrl, screenshotUrl } = req.body;
 
         if (!text) {
             return res.status(400).json({ error: 'Post text is required' });
         }
 
-        if (destination === 'buffer') {
-            const { targetChannels, bufferMode = 'draft' } = req.body;
+        const { targetChannels, bufferMode = 'draft' } = req.body;
 
-            if (!process.env.BUFFER_ACCESS_TOKEN || !process.env.BUFFER_PROFILE_ID) {
-                return res.status(401).json({ error: 'Buffer credentials not configured' });
-            }
+        const bufferAccessToken = process.env.BUFFER_ACCESS_TOKEN || await getSetting('BUFFER_ACCESS_TOKEN');
+        const bufferProfileId = process.env.BUFFER_PROFILE_ID || await getSetting('BUFFER_PROFILE_ID');
 
-            if (!targetChannels || !Array.isArray(targetChannels) || targetChannels.length === 0) {
-                return res.status(400).json({ error: 'No target channels selected for Buffer.' });
-            }
+        if (!bufferAccessToken || !bufferProfileId) {
+            return res.status(401).json({ error: 'Buffer credentials not configured' });
+        }
 
-            const query = `
+        if (!targetChannels || !Array.isArray(targetChannels) || targetChannels.length === 0) {
+            return res.status(400).json({ error: 'No target channels selected for Buffer.' });
+        }
+
+        const query = `
                 mutation CreatePost($input: CreatePostInput!) {
                     createPost(input: $input) {
                         __typename
@@ -41,95 +42,72 @@ router.post('/', async (req, res) => {
                 }
             `;
 
-            let successCount = 0;
-            const errors = [];
-            const postedIds = [];
+        let successCount = 0;
+        const errors = [];
+        const postedIds = [];
 
-            for (const channelId of targetChannels) {
-                try {
-                    const input = {
-                        channelId: channelId,
-                        text: text,
-                        schedulingType: "automatic",
-                        mode: "shareNext",
-                        saveToDraft: bufferMode === 'draft'
-                    };
-
-                    // Attach image if screenshot URL is provided
-                    if (screenshotUrl) {
-                        input.assets = {
-                            images: [{ url: screenshotUrl }]
-                        };
-                    }
-
-                    const response = await axios.post('https://api.buffer.com/1/graphql', {
-                        query,
-                        variables: { input }
-                    }, {
-                        headers: {
-                            'Authorization': `Bearer ${process.env.BUFFER_ACCESS_TOKEN}`,
-                            'Content-Type': 'application/json'
-                        }
-                    });
-
-                    if (response.data.errors) {
-                        errors.push(`Channel ${channelId}: ${response.data.errors[0].message}`);
-                        continue;
-                    }
-
-                    if (response.data.data?.createPost?.__typename === 'PostActionSuccess') {
-                        postedIds.push(response.data.data.createPost.post.id);
-                        successCount++;
-                    } else if (response.data.data?.createPost?.__typename === 'InvalidInputError' || response.data.data?.createPost?.__typename === 'UnexpectedError') {
-                        errors.push(`Channel ${channelId}: ${response.data.data.createPost.message}`);
-                    } else {
-                        console.log("FALLBACK RESPONSE:", JSON.stringify(response.data.data, null, 2));
-                        successCount++;
-                    }
-                } catch (e) {
-                    console.error(`Error posting to channel ${channelId}:`, e.message);
-                    errors.push(`Channel ${channelId} threw an exception.`);
-                }
-            }
-
-            if (successCount === 0) {
-                return res.status(502).json({
-                    error: `Failed to publish to Buffer. Errors: ${errors.join(' | ')}`
-                });
-            }
-
-            if (errors.length > 0) {
-                console.warn(`Buffer multi-post completed with partial failures:`, errors);
-            }
-
-            return res.json({
-                success: true,
-                url: 'https://publish.buffer.com/all-channels',
-                message: `Published to ${successCount} channel(s)`,
-                postedIds
-            });
-
-        } else {
-            // Default to Twitter
-            if (!req.session || !req.session.twitter || !req.session.twitter.accessToken) {
-                return res.status(401).json({ error: 'Twitter connection required to publish' });
-            }
-
-            const client = new TwitterApi(req.session.twitter.accessToken);
-
-            // Post a single tweet
-            const tweetResponse = await client.v2.tweet(text);
-
-            let url = `https://twitter.com/user/status/${tweetResponse.data.id}`;
+        for (const channelId of targetChannels) {
             try {
-                const me = await client.v2.me();
-                url = `https://twitter.com/${me.data.username}/status/${tweetResponse.data.id}`;
-            } catch (e) {
-                console.warn("Could not fetch user ID for URL construction", e.message);
-            }
+                const input = {
+                    channelId: channelId,
+                    text: text,
+                    schedulingType: "automatic",
+                    mode: "shareNext",
+                    saveToDraft: bufferMode === 'draft'
+                };
 
-            return res.json({ success: true, url: url });
+                // Attach image if screenshot URL is provided
+                if (screenshotUrl) {
+                    input.assets = {
+                        images: [{ url: screenshotUrl }]
+                    };
+                }
+
+                const response = await axios.post('https://api.buffer.com/1/graphql', {
+                    query,
+                    variables: { input }
+                }, {
+                    headers: {
+                        'Authorization': `Bearer ${bufferAccessToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.data.errors) {
+                    errors.push(`Channel ${channelId}: ${response.data.errors[0].message}`);
+                    continue;
+                }
+
+                if (response.data.data?.createPost?.__typename === 'PostActionSuccess') {
+                    postedIds.push(response.data.data.createPost.post.id);
+                    successCount++;
+                } else if (response.data.data?.createPost?.__typename === 'InvalidInputError' || response.data.data?.createPost?.__typename === 'UnexpectedError') {
+                    errors.push(`Channel ${channelId}: ${response.data.data.createPost.message}`);
+                } else {
+                    successCount++;
+                }
+            } catch (e) {
+                console.error(`Error posting to channel ${channelId}:`, e.message);
+                errors.push(`Channel ${channelId} threw an exception.`);
+            }
         }
+
+        if (successCount === 0) {
+            return res.status(502).json({
+                error: `Failed to publish to Buffer. Errors: ${errors.join(' | ')}`
+            });
+        }
+
+        if (errors.length > 0) {
+            console.warn(`Buffer multi-post completed with partial failures:`, errors);
+        }
+
+        return res.json({
+            success: true,
+            url: 'https://publish.buffer.com/all-channels',
+            message: `Published to ${successCount} channel(s)`,
+            postedIds
+        });
     } catch (error) {
         console.error('Publish Error:', error.response?.data || error.message || error);
 

@@ -17,12 +17,11 @@ export const loadSettings = () => {
         if (serialized === null) {
             return {
                 providerConnections: {
-                    raindropio: false,
-                    twitter: false
+                    raindropio: false
                 },
                 selectedTag: '',
-                postingObjectives: 'Propose engaging Twitter posts that help me increase my follower count',
-                publishDestination: 'twitter',
+                postingObjectives: 'Propose engaging posts that help me increase my follower count',
+                publishDestination: 'buffer',
                 bufferChannels: []
             };
         }
@@ -30,7 +29,7 @@ export const loadSettings = () => {
 
         // Ensure defaults for any new properties not present in old saves
         if (parsed && !parsed.publishDestination) {
-            parsed.publishDestination = 'twitter';
+            parsed.publishDestination = 'buffer';
         }
         if (parsed && !parsed.bufferChannels) {
             parsed.bufferChannels = [];
@@ -41,12 +40,11 @@ export const loadSettings = () => {
         console.error("Failed to load settings from localStorage:", error);
         return {
             providerConnections: {
-                raindropio: false,
-                twitter: false
+                raindropio: false
             },
             selectedTag: '',
-            postingObjectives: 'Propose engaging Twitter posts that help me increase my follower count',
-            publishDestination: 'twitter',
+            postingObjectives: 'Propose engaging posts that help me increase my follower count',
+            publishDestination: 'buffer',
             bufferChannels: []
         };
     }

@@ -10,9 +10,19 @@ import scrapeRoutes from './routes/scrape.js';
 import publishRoutes from './routes/publish.js';
 import screenshotRoutes from './routes/screenshot.js';
 import imageRoutes from './routes/image.js';
+import systemRoutes from './routes/system.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import connectSqlite3 from 'connect-sqlite3';
+import { getDb } from './services/db.js';
 
 // Load env vars
 dotenv.config();
+
+// Ensure DB is initialized
+getDb();
+
+const SQLiteStore = connectSqlite3(session);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -29,19 +39,24 @@ app.use(cookieParser());
 app.set('trust proxy', 1);
 
 // Configure sessions to persist OAuth tokens
-// In production, this should use a real store (like Redis or PostgreSQL) instead of MemoryStore
 app.use(session({
+    store: new SQLiteStore({
+        db: 'raindrop-sessions.sqlite',
+        dir: process.cwd()
+    }),
     secret: process.env.SESSION_SECRET || 'fallback-secret-for-dev-only',
     resave: false,
     saveUninitialized: false,
     cookie: {
         secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
+        sameSite: 'lax',
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
     }
 }));
 
 // Routes
+app.use('/api/system', systemRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/raindropio', raindropioRoutes);
 app.use('/api/venice', veniceRoutes);
@@ -54,6 +69,20 @@ app.use('/api/imgbb', imageRoutes);
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok' });
 });
+
+// Serve frontend in production
+if (process.env.NODE_ENV === 'production') {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+
+    // Serve static files from the React app
+    app.use(express.static(path.join(__dirname, '../client/dist')));
+
+    // The catchall handler: for any request that doesn't match an API route, send back React's index.html file.
+    app.use((req, res) => {
+        res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+    });
+}
 
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);

@@ -3,11 +3,11 @@ import ProviderButton from '../components/ProviderButton';
 import { loadSettings, saveSettings } from '../services/settingsService';
 import { login, checkAuthStatus, testConnection } from '../services/authService';
 import { fetchTags } from '../services/raindropioService';
+import { configureSystem, getSystemStatus } from '../services/systemService';
 
 const SetupPage = () => {
     const [connections, setConnections] = useState({
         raindropio: false,
-        twitter: false,
         venice: false,
         buffer: false,
         imgbb: false,
@@ -16,7 +16,15 @@ const SetupPage = () => {
     const [selectedTag, setSelectedTag] = useState(() => loadSettings().selectedTag);
     const [publishDestination, setPublishDestination] = useState(() => loadSettings().publishDestination);
     const [objectives, setObjectives] = useState(() => loadSettings().postingObjectives);
+
+    // BYOK Config State
+    const [raindropClientId, setRaindropClientId] = useState('');
+    const [raindropClientSecret, setRaindropClientSecret] = useState('');
+    const [veniceApiKey, setVeniceApiKey] = useState('');
+    const [bufferAccessToken, setBufferAccessToken] = useState('');
+    const [bufferProfileId, setBufferProfileId] = useState('');
     const [imgbbKey, setImgbbKey] = useState('');
+
     const [imgbbSaving, setImgbbSaving] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState('');
@@ -24,18 +32,33 @@ const SetupPage = () => {
     const [availableChannels, setAvailableChannels] = useState([]);
     const [bufferChannels, setBufferChannels] = useState(() => loadSettings().bufferChannels || []);
 
+    const [sysStatus, setSysStatus] = useState(null);
+
     // 1. Initial Load & Auth Check
     useEffect(() => {
         // Fetch real connection status from backend session
         const verifyStatus = async () => {
-            const status = await checkAuthStatus();
-            setConnections({
-                raindropio: status.raindropio,
-                twitter: status.twitter,
-                venice: status.venice,
-                buffer: status.buffer,
-                imgbb: status.imgbb,
-            });
+            try {
+                const [authStatus, systemStatus] = await Promise.all([
+                    checkAuthStatus(),
+                    getSystemStatus()
+                ]);
+
+                setConnections({
+                    raindropio: authStatus.raindropio,
+                    venice: authStatus.venice,
+                    buffer: authStatus.buffer,
+                    imgbb: authStatus.imgbb,
+                });
+
+                setSysStatus(systemStatus);
+
+                if (systemStatus.raindropClientId) setRaindropClientId(systemStatus.raindropClientId);
+                if (systemStatus.bufferProfileId) setBufferProfileId(systemStatus.bufferProfileId);
+
+            } catch (error) {
+                console.error('Initial load failed:', error);
+            }
 
             // Clean up the URL if we just returned from OAuth
             const params = new URLSearchParams(window.location.search);
@@ -100,7 +123,6 @@ const SetupPage = () => {
             setTestMessage({ type: 'error', text: result.error });
         } else {
             let msg = 'Connection successful!';
-            if (providerId === 'twitter') msg = `Twitter connected as @${result.username}`;
             if (providerId === 'raindropio') msg = `Raindrop connected as ${result.user}`;
             if (providerId === 'venice') msg = `Venice connected (${result.modelsCount} models found)`;
             if (providerId === 'buffer') msg = `Buffer connected — ${result.channelCount} channel(s) on ${result.services}`;
@@ -137,20 +159,39 @@ const SetupPage = () => {
         }
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         setIsSaving(true);
-        const success = saveSettings({
-            selectedTag,
-            postingObjectives: objectives,
-            publishDestination,
-            bufferChannels
-        });
+        try {
+            await configureSystem({
+                raindropClientId,
+                raindropClientSecret,
+                veniceApiKey,
+                bufferAccessToken,
+                bufferProfileId,
+                imgbbApiKey: imgbbKey
+            });
 
-        setTimeout(() => {
+            // Save UI Preferences to LocalStorage
+            const success = saveSettings({
+                selectedTag,
+                postingObjectives: objectives,
+                publishDestination,
+                bufferChannels
+            });
+
+            if (success) {
+                setSaveMessage('Settings saved securely! You may need to refresh or connect your accounts.');
+                // Optionally clear the inputs if you don't want to leave passwords on screen
+                setRaindropClientSecret('');
+            } else {
+                setSaveMessage('Error saving preferences to local storage.');
+            }
+        } catch (error) {
+            setSaveMessage('Error saving configurations to backend.');
+        } finally {
             setIsSaving(false);
-            setSaveMessage(success ? 'Settings saved securely!' : 'Error saving settings.');
-            setTimeout(() => setSaveMessage(''), 3000);
-        }, 600);
+            setTimeout(() => setSaveMessage(''), 5000);
+        }
     };
 
     return (
@@ -166,12 +207,12 @@ const SetupPage = () => {
             <div className="space-y-8 animate-fade-in w-full">
 
                 {/* Top Row: AI Prompt */}
-                <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6">
+                <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 mb-6">
                     <div className="flex flex-col space-y-2">
                         <label htmlFor="objectives-input" className="text-base font-bold text-gray-900 dark:text-white">Custom AI Prompt (Objectives)</label>
                         <textarea
                             id="objectives-input"
-                            rows="3"
+                            rows="2"
                             value={objectives}
                             onChange={(e) => setObjectives(e.target.value)}
                             placeholder="E.g., Propose engaging Twitter posts that help me increase my follower count..."
@@ -180,6 +221,61 @@ const SetupPage = () => {
                     </div>
                 </section>
 
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4 mt-8">Integration Credentials (BYOK)</h2>
+                <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 p-4 mb-6 rounded-r-md">
+                    <p className="text-sm text-blue-800 dark:text-blue-300">
+                        Enter your API keys below. Only fill in the fields you want to update. Blank fields will keep their existing values securely on the server.
+                    </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Raindrop BYOK */}
+                    <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 flex flex-col space-y-4">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Raindrop.io App {sysStatus?.hasRaindropConfig && <span className="text-green-500 text-sm ml-2">✓ Configured</span>}</h3>
+                        <div className="space-y-3 flex-grow">
+                            <div>
+                                <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Client ID</label>
+                                <input type="text" value={raindropClientId} onChange={e => setRaindropClientId(e.target.value)} placeholder="Enter Client ID" className="mt-1 block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none dark:bg-black dark:text-white" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Client Secret</label>
+                                <input type="password" value={raindropClientSecret} onChange={e => setRaindropClientSecret(e.target.value)} placeholder="Enter Client Secret" className="mt-1 block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none dark:bg-black dark:text-white" />
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* Venice & ImgBB BYOK */}
+                    <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 flex flex-col space-y-4">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Venice AI & ImgBB</h3>
+                        <div className="space-y-3 flex-grow">
+                            <div>
+                                <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Venice API Key {connections.venice && <span className="text-green-500">✓</span>}</label>
+                                <input type="password" value={veniceApiKey} onChange={e => setVeniceApiKey(e.target.value)} placeholder="Enter Venice API Key" className="mt-1 block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none dark:bg-black dark:text-white" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-gray-700 dark:text-gray-300">ImgBB API Key {connections.imgbb && <span className="text-green-500">✓</span>}</label>
+                                <input type="password" value={imgbbKey} onChange={e => setImgbbKey(e.target.value)} placeholder="Enter ImgBB Key" className="mt-1 block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none dark:bg-black dark:text-white" />
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* Buffer BYOK */}
+                    <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 flex flex-col space-y-4">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Buffer Configuration</h3>
+                        <div className="space-y-3 flex-grow">
+                            <div>
+                                <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Organization / Profile ID</label>
+                                <input type="text" value={bufferProfileId} onChange={e => setBufferProfileId(e.target.value)} placeholder="Enter Profile/Org ID" className="mt-1 block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none dark:bg-black dark:text-white" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Access Token {connections.buffer && <span className="text-green-500 text-sm ml-2">✓ Configured</span>}</label>
+                                <input type="password" value={bufferAccessToken} onChange={e => setBufferAccessToken(e.target.value)} placeholder="Enter Access Token" className="mt-1 block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none dark:bg-black dark:text-white" />
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4 mt-12">User Workflows & Connections</h2>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {/* COLUMN 1: Bookmarks */}
                     <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 flex flex-col space-y-4 transition-colors duration-300">
@@ -220,15 +316,11 @@ const SetupPage = () => {
                         </div>
                     </section>
 
-                    {/* COLUMN 2: AI Copywriter */}
+                    {/* COLUMN 2: Connections */}
                     <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 flex flex-col space-y-4 transition-colors duration-300">
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">AI Copywriter</h2>
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">Connection Health</h2>
 
-                        <div className="flex flex-col space-y-2 flex-grow">
-                            {/* No specific selector required for Venice based on instructions */}
-                        </div>
-
-                        <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-800 space-y-4">
+                        <div className="flex flex-col space-y-4 flex-grow">
                             <ProviderButton
                                 providerName="Venice.ai"
                                 providerId="venice"
@@ -237,32 +329,13 @@ const SetupPage = () => {
                                 onTest={handleTest}
                             />
 
-                            <div className="pt-3 border-t border-gray-100 dark:border-gray-800">
-                                <label htmlFor="imgbb-key-input" className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
-                                    ImgBB API Key
-                                    {connections.imgbb && <span className="ml-2 text-green-500 text-xs font-semibold">✓ Configured</span>}
-                                </label>
-                                <div className="flex gap-2">
-                                    <input
-                                        id="imgbb-key-input"
-                                        type="password"
-                                        value={imgbbKey}
-                                        onChange={(e) => setImgbbKey(e.target.value)}
-                                        placeholder={connections.imgbb ? '••••••••' : 'Paste your ImgBB key'}
-                                        className="flex-1 rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-black dark:text-white transition-colors duration-200"
-                                    />
-                                    <button
-                                        onClick={handleSaveImgbbKey}
-                                        disabled={imgbbSaving || !imgbbKey.trim()}
-                                        className="rounded-md px-3 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
-                                    >
-                                        {imgbbSaving ? '...' : 'Save'}
-                                    </button>
-                                </div>
-                                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                                    Get a free key at <a href="https://api.imgbb.com/" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">imgbb.com</a>
-                                </p>
-                            </div>
+                            <ProviderButton
+                                providerName="ImgBB Image Host"
+                                providerId="imgbb"
+                                isConnected={connections.imgbb}
+                                onConnect={() => { }}
+                                onTest={handleTest}
+                            />
                         </div>
                     </section>
 
@@ -279,7 +352,6 @@ const SetupPage = () => {
                                     onChange={(e) => setPublishDestination(e.target.value)}
                                     className="block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2.5 pl-3 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-black dark:text-white transition-colors duration-200"
                                 >
-                                    <option value="twitter">X (Twitter)</option>
                                     <option value="buffer">Buffer</option>
                                 </select>
                                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
@@ -291,15 +363,6 @@ const SetupPage = () => {
                         </div>
 
                         <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-800">
-                            {publishDestination === 'twitter' && (
-                                <ProviderButton
-                                    providerName="X (Twitter)"
-                                    providerId="twitter"
-                                    isConnected={connections.twitter}
-                                    onConnect={handleConnect}
-                                    onTest={handleTest}
-                                />
-                            )}
                             {publishDestination === 'buffer' && (
                                 <ProviderButton
                                     providerName="Buffer.com"

@@ -3,27 +3,26 @@ import express from 'express';
 import request from 'supertest';
 import publishRoutes from './publish';
 import axios from 'axios';
+import { setSetting } from '../services/db.js';
 
 vi.mock('axios');
-
-vi.mock('twitter-api-v2', () => {
+vi.mock('../services/db.js', () => {
+    let mockDb = {};
     return {
-        TwitterApi: class {
-            constructor() {
-                this.v2 = {
-                    tweet: vi.fn().mockResolvedValue({ data: { id: 'mock-tweet-id' } }),
-                    me: vi.fn().mockResolvedValue({ data: { username: 'mockuser' } })
-                };
-            }
-        }
+        getSetting: vi.fn().mockImplementation(async (k) => mockDb[k]),
+        setSetting: vi.fn().mockImplementation(async (k, v) => { mockDb[k] = v; })
     };
 });
 
+
+
 describe('POST /api/publish', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
         vi.clearAllMocks();
         delete process.env.BUFFER_ACCESS_TOKEN;
         delete process.env.BUFFER_PROFILE_ID;
+        await setSetting('BUFFER_ACCESS_TOKEN', '');
+        await setSetting('BUFFER_PROFILE_ID', '');
     });
 
     it('should fail if text is missing', async () => {
@@ -37,44 +36,6 @@ describe('POST /api/publish', () => {
 
         expect(response.status).toBe(400);
         expect(response.body.error).toMatch(/text.*required/i);
-    });
-
-    // --- Twitter Tests ---
-    it('should fail if user is not authenticated with Twitter', async () => {
-        const testApp = express();
-        testApp.use(express.json());
-        testApp.use((req, res, next) => {
-            req.session = {};
-            next();
-        });
-        testApp.use('/api/publish', publishRoutes);
-
-        const response = await request(testApp)
-            .post('/api/publish')
-            .send({ text: 'Hello world', articleUrl: 'https://example.com' });
-
-        expect(response.status).toBe(401);
-        expect(response.body.error).toMatch(/Twitter connection required/i);
-    });
-
-    it('should publish a single tweet and return success', async () => {
-        const testApp = express();
-        testApp.use(express.json());
-        testApp.use((req, res, next) => {
-            req.session = {
-                twitter: { accessToken: 'mock-access', accessSecret: 'mock-secret' }
-            };
-            next();
-        });
-        testApp.use('/api/publish', publishRoutes);
-
-        const response = await request(testApp)
-            .post('/api/publish')
-            .send({ text: 'Test post', articleUrl: 'https://example.com' });
-
-        expect(response.status).toBe(200);
-        expect(response.body.success).toBe(true);
-        expect(response.body.url).toBeDefined();
     });
 
     // --- Buffer Tests ---

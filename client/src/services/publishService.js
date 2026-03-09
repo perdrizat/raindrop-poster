@@ -9,7 +9,7 @@
  * @returns {Promise<Object>} An object containing `{ success: true, url: string }` if successful.
  * @throws {Error} If the API request fails.
  */
-export async function publishPost(text, articleUrl, screenshotUrl, destination = 'twitter', targetChannels = [], bufferMode = 'draft') {
+export async function publishPost(text, articleUrl, screenshotUrl, destination = 'buffer', targetChannels = [], bufferMode = 'draft') {
     const response = await fetch('/api/publish', {
         method: 'POST',
         headers: {

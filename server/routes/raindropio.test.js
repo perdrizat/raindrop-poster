@@ -6,6 +6,13 @@ import raindropioRoutes from './raindropio.js';
 import axios from 'axios';
 
 vi.mock('axios');
+vi.mock('../services/db.js', () => {
+    let mockDb = {};
+    return {
+        getSetting: vi.fn().mockImplementation(async (k) => mockDb[k]),
+        setSetting: vi.fn().mockImplementation(async (k, v) => { mockDb[k] = v; })
+    };
+});
 
 const app = express();
 app.use(express.json());
@@ -26,8 +33,10 @@ app.use((req, res, next) => {
 app.use('/api/raindropio', raindropioRoutes);
 
 describe('Raindrop API Routes', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
         vi.clearAllMocks();
+        const { setSetting } = await import('../services/db.js');
+        await setSetting('RAINDROPIO_ACCESS_TOKEN', '');
     });
 
     describe('GET /api/raindropio/test', () => {
@@ -60,7 +69,7 @@ describe('Raindrop API Routes', () => {
         it('should return 401 if user is not authenticated with Raindrop', async () => {
             const res = await request(app).get('/api/raindropio/tags');
             expect(res.status).toBe(401);
-            expect(res.body).toEqual({ error: 'Not authenticated with Raindrop' });
+            expect(res.body).toEqual({ error: 'Raindrop.io connection required' });
         });
 
         it('should return success and tags array if token is valid', async () => {

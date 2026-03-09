@@ -1,17 +1,19 @@
 import express from 'express';
 import axios from 'axios';
+import { getSetting } from '../services/db.js';
 
 const router = express.Router();
 
 router.get('/test', async (req, res) => {
     try {
-        if (!req.session.raindropio || !req.session.raindropio.accessToken) {
+        const token = req.session?.raindropio?.accessToken || await getSetting('RAINDROPIO_ACCESS_TOKEN');
+        if (!token) {
             return res.status(401).json({ error: 'Not authenticated with Raindrop' });
         }
 
         const response = await axios.get('https://api.raindrop.io/rest/v1/user', {
             headers: {
-                Authorization: `Bearer ${req.session.raindropio.accessToken}`
+                Authorization: `Bearer ${token}`
             }
         });
 
@@ -25,13 +27,14 @@ router.get('/test', async (req, res) => {
 // --- FETCH TAGS ---
 router.get('/tags', async (req, res) => {
     try {
-        if (!req.session.raindropio || !req.session.raindropio.accessToken) {
-            return res.status(401).json({ error: 'Not authenticated with Raindrop' });
+        const token = req.session?.raindropio?.accessToken || await getSetting('RAINDROPIO_ACCESS_TOKEN');
+        if (!token) {
+            return res.status(401).json({ error: 'Raindrop.io connection required' });
         }
 
         const response = await axios.get('https://api.raindrop.io/rest/v1/tags', {
             headers: {
-                Authorization: `Bearer ${req.session.raindropio.accessToken}`
+                Authorization: `Bearer ${token}`
             }
         });
 
@@ -46,7 +49,8 @@ router.get('/tags', async (req, res) => {
 // --- FETCH TAGGED ITEMS ---
 router.get('/raindrops/0', async (req, res) => {
     try {
-        if (!req.session.raindropio || !req.session.raindropio.accessToken) {
+        const token = req.session?.raindropio?.accessToken || await getSetting('RAINDROPIO_ACCESS_TOKEN');
+        if (!token) {
             return res.status(401).json({ error: 'Not authenticated with Raindrop' });
         }
 
@@ -55,7 +59,7 @@ router.get('/raindrops/0', async (req, res) => {
 
         const response = await axios.get(url, {
             headers: {
-                Authorization: `Bearer ${req.session.raindropio.accessToken}`
+                Authorization: `Bearer ${token}`
             }
         });
 
@@ -69,7 +73,8 @@ router.get('/raindrops/0', async (req, res) => {
 // --- UPDATE BOOKMARK TAGS ---
 router.put('/bookmark/:id', async (req, res) => {
     try {
-        if (!req.session.raindropio || !req.session.raindropio.accessToken) {
+        const token = req.session?.raindropio?.accessToken || await getSetting('RAINDROPIO_ACCESS_TOKEN');
+        if (!token) {
             return res.status(401).json({ error: 'Not authenticated with Raindrop' });
         }
 
@@ -78,7 +83,7 @@ router.put('/bookmark/:id', async (req, res) => {
 
         const response = await axios.put(`https://api.raindrop.io/rest/v1/raindrop/${id}`, { tags }, {
             headers: {
-                Authorization: `Bearer ${req.session.raindropio.accessToken}`
+                Authorization: `Bearer ${token}`
             }
         });
 

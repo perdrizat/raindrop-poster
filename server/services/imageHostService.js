@@ -1,5 +1,6 @@
 import axios from 'axios';
 import FormData from 'form-data';
+import { getSetting } from './db.js';
 
 /**
  * Uploads a PNG buffer to ImgBB and returns the public URL.
@@ -7,7 +8,7 @@ import FormData from 'form-data';
  * @returns {Promise<{url: string}>} The public URL of the uploaded image
  */
 export const uploadImage = async (pngBuffer) => {
-    const apiKey = process.env.IMGBB_API_KEY;
+    const apiKey = process.env.IMGBB_API_KEY || await getSetting('IMGBB_API_KEY');
     if (!apiKey) {
         throw new Error('IMGBB_API_KEY is not configured');
     }

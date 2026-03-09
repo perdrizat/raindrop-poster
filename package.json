@@ -13,5 +13,9 @@
   "description": "",
   "devDependencies": {
     "concurrently": "^9.2.1"
+  },
+  "dependencies": {
+    "connect-sqlite3": "^0.9.16",
+    "sqlite3": "^5.1.7"
   }
 }
