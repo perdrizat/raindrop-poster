@@ -24,17 +24,20 @@ ENV NODE_ENV=production
 ENV PORT=80
 ENV DATA_DIR=/app/data
 
-# Environment variables for Puppeteer in docker - let the base image handle these
-# (Skip overrides that might conflict with the bundled browser)
+# Configure Puppeteer cache directory to be local to the app
+ENV PUPPETEER_CACHE_DIR=/app/.puppeteer_cache
 
 # Create data directory for SQLite persistence
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && mkdir -p /app/.puppeteer_cache
 
 WORKDIR /app
 
 # Copy server package.json and install production dependencies
 COPY server/package*.json ./server/
 RUN cd server && npm install --omit=dev
+
+# Explicitly install the browser for the version of Puppeteer we are using
+RUN cd server && npx puppeteer browsers install chrome
 
 # Copy server source
 COPY server/ ./server/

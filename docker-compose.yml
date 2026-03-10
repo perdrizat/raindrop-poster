@@ -1,5 +1,7 @@
 services:
   raindrop-poster:
+    container_name: raindrop-poster
+    image: raindrop-poster:latest
     build: .
     ports:
       - "80:80"
