@@ -166,7 +166,103 @@ describe('POST /api/publish', () => {
         expect(callArgs.variables.input.assets).toBeUndefined();
     });
 
-    it('should post correctly to Buffer Draft queue', async () => {
+    // --- Buffer scheduling mode tests (per GraphQL API spec) ---
+    // schedulingType (required): 'notification' | 'automatic'
+    // mode (required): 'shareNow' | 'shareNext' | 'addToQueue' | 'customScheduled' | 'recommendedTime'
+    // saveToDraft (optional Boolean): only sent as true for drafts
+
+    it('should send mode=shareNow and schedulingType=automatic for "Now"', async () => {
+        process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
+        process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
+
+        axios.post.mockImplementation(() =>
+            Promise.resolve({ data: { data: { createPost: { post: { id: 'mock-now-id' } } } } })
+        );
+
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
+
+        const response = await request(testApp)
+            .post('/api/publish')
+            .send({
+                text: 'Post now test',
+                articleUrl: 'https://example.com',
+                destination: 'buffer',
+                bufferMode: 'now',
+                targetChannels: ['channel1']
+            });
+
+        expect(response.status).toBe(200);
+
+        const callArgs = axios.post.mock.calls[0][1];
+        expect(callArgs.variables.input.schedulingType).toBe('automatic');
+        expect(callArgs.variables.input.mode).toBe('shareNow');
+        expect(callArgs.variables.input.saveToDraft).toBeUndefined();
+    });
+
+    it('should send mode=shareNext and schedulingType=automatic for "Prioritize"', async () => {
+        process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
+        process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
+
+        axios.post.mockImplementation(() =>
+            Promise.resolve({ data: { data: { createPost: { post: { id: 'mock-pri-id' } } } } })
+        );
+
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
+
+        const response = await request(testApp)
+            .post('/api/publish')
+            .send({
+                text: 'Prioritize test',
+                articleUrl: 'https://example.com',
+                destination: 'buffer',
+                bufferMode: 'prioritize',
+                targetChannels: ['channel1']
+            });
+
+        expect(response.status).toBe(200);
+
+        const callArgs = axios.post.mock.calls[0][1];
+        expect(callArgs.variables.input.schedulingType).toBe('automatic');
+        expect(callArgs.variables.input.mode).toBe('shareNext');
+        expect(callArgs.variables.input.saveToDraft).toBeUndefined();
+    });
+
+    it('should send mode=addToQueue and schedulingType=automatic for "Next Available"', async () => {
+        process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
+        process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
+
+        axios.post.mockImplementation(() =>
+            Promise.resolve({ data: { data: { createPost: { post: { id: 'mock-next-id' } } } } })
+        );
+
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
+
+        const response = await request(testApp)
+            .post('/api/publish')
+            .send({
+                text: 'Next available test',
+                articleUrl: 'https://example.com',
+                destination: 'buffer',
+                bufferMode: 'next',
+                targetChannels: ['channel1']
+            });
+
+        expect(response.status).toBe(200);
+
+        const callArgs = axios.post.mock.calls[0][1];
+        expect(callArgs.variables.input.channelId).toBe('channel1');
+        expect(callArgs.variables.input.schedulingType).toBe('automatic');
+        expect(callArgs.variables.input.mode).toBe('addToQueue');
+        expect(callArgs.variables.input.saveToDraft).toBeUndefined();
+    });
+
+    it('should send saveToDraft=true with required schedulingType and mode for "Drafts"', async () => {
         process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
         process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
 
@@ -190,19 +286,11 @@ describe('POST /api/publish', () => {
 
         expect(response.status).toBe(200);
 
-        // Verify it sets shareNext and saveToDraft
-        expect(axios.post).toHaveBeenCalledWith(
-            'https://api.buffer.com/1/graphql',
-            expect.objectContaining({
-                variables: expect.objectContaining({
-                    input: expect.objectContaining({
-                        channelId: 'channel1',
-                        saveToDraft: true,
-                        mode: "shareNext"
-                    })
-                })
-            }),
-            expect.anything()
-        );
+        const callArgs = axios.post.mock.calls[0][1];
+        expect(callArgs.variables.input.channelId).toBe('channel1');
+        expect(callArgs.variables.input.saveToDraft).toBe(true);
+        // schedulingType and mode are required by the Buffer API even for drafts
+        expect(callArgs.variables.input.schedulingType).toBe('automatic');
+        expect(callArgs.variables.input.mode).toBe('addToQueue');
     });
 });

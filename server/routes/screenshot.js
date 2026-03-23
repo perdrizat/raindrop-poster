@@ -24,6 +24,7 @@ router.post('/', async (req, res) => {
 
         const attribution = { author: author || null, date: date || null, domain };
 
+        console.log(`Screenshot → ${url}${quoteText ? ` quote="${quoteText.slice(0, 50)}..."` : ''}`);
         const result = await captureQuoteScreenshot(
             url,
             quoteText || null,
@@ -33,11 +34,13 @@ router.post('/', async (req, res) => {
 
         // If result is a string, it's already a public URL (cover image shortcut)
         if (typeof result === 'string') {
+            console.log(`Screenshot ✓ cover image shortcut: ${result}`);
             return res.json({ screenshotUrl: result });
         }
 
         // Otherwise it's a Buffer — upload to image host
         const { url: imageUrl } = await uploadImage(result);
+        console.log(`Screenshot ✓ uploaded: ${imageUrl}`);
         return res.json({ screenshotUrl: imageUrl });
 
     } catch (error) {

@@ -51,10 +51,29 @@ router.post('/', async (req, res) => {
                 const input = {
                     channelId: channelId,
                     text: text,
-                    schedulingType: "automatic",
-                    mode: "shareNext",
-                    saveToDraft: bufferMode === 'draft'
                 };
+
+                // Buffer GraphQL API requires both schedulingType and mode:
+                //   schedulingType: 'automatic' | 'notification'
+                //   mode: 'shareNow' | 'shareNext' | 'addToQueue' | 'customScheduled' | 'recommendedTime'
+                //   saveToDraft (optional): only sent as true for drafts
+                input.schedulingType = 'automatic';
+                switch (bufferMode) {
+                    case 'now':
+                        input.mode = 'shareNow';
+                        break;
+                    case 'prioritize':
+                        input.mode = 'shareNext';
+                        break;
+                    case 'next':
+                        input.mode = 'addToQueue';
+                        break;
+                    case 'draft':
+                    default:
+                        input.mode = 'addToQueue';
+                        input.saveToDraft = true;
+                        break;
+                }
 
                 // Attach image if screenshot URL is provided
                 if (screenshotUrl) {
@@ -62,6 +81,8 @@ router.post('/', async (req, res) => {
                         images: [{ url: screenshotUrl }]
                     };
                 }
+
+                console.log(`Buffer API → createPost channel=${channelId} mode=${input.mode} scheduling=${input.schedulingType}${input.saveToDraft ? ' draft=true' : ''}${screenshotUrl ? ' +image' : ''}`);
 
                 const response = await axios.post('https://api.buffer.com/1/graphql', {
                     query,
@@ -74,16 +95,21 @@ router.post('/', async (req, res) => {
                 });
 
                 if (response.data.errors) {
+                    console.error(`Buffer API ✗ channel=${channelId}: ${response.data.errors[0].message}`);
                     errors.push(`Channel ${channelId}: ${response.data.errors[0].message}`);
                     continue;
                 }
 
-                if (response.data.data?.createPost?.__typename === 'PostActionSuccess') {
-                    postedIds.push(response.data.data.createPost.post.id);
+                const result = response.data.data?.createPost;
+                if (result?.__typename === 'PostActionSuccess') {
+                    console.log(`Buffer API ✓ channel=${channelId} postId=${result.post.id}`);
+                    postedIds.push(result.post.id);
                     successCount++;
-                } else if (response.data.data?.createPost?.__typename === 'InvalidInputError' || response.data.data?.createPost?.__typename === 'UnexpectedError') {
-                    errors.push(`Channel ${channelId}: ${response.data.data.createPost.message}`);
+                } else if (result?.__typename === 'InvalidInputError' || result?.__typename === 'UnexpectedError') {
+                    console.error(`Buffer API ✗ channel=${channelId}: ${result.message}`);
+                    errors.push(`Channel ${channelId}: ${result.message}`);
                 } else {
+                    console.log(`Buffer API ✓ channel=${channelId} (no post ID returned)`);
                     successCount++;
                 }
             } catch (e) {

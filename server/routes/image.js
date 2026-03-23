@@ -23,12 +23,14 @@ router.post('/upload', async (req, res) => {
         const base64Data = image.replace(/^data:image\/[a-zA-Z]*;base64,/, '');
         params.append('image', base64Data);
 
+        console.log(`ImgBB API → upload (${Math.round(base64Data.length / 1024)}KB base64)`);
         const response = await axios.post(`https://api.imgbb.com/1/upload?key=${apiKey}&expiration=2419200`, params, {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'
             }
         });
 
+        console.log(`ImgBB API ✓ ${response.data.data.url}`);
         res.status(200).json({ success: true, url: response.data.data.url });
     } catch (error) {
         console.error('ImgBB Upload Error:', error.response?.data || error.message);

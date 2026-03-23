@@ -82,30 +82,29 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
         setCaptureError(null);
 
         try {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = async () => {
-                const base64Image = reader.result;
-                const response = await fetch('/api/imgbb/upload', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ image: base64Image })
-                });
+            const base64Image = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error('Failed to read file'));
+                reader.readAsDataURL(file);
+            });
 
-                if (!response.ok) {
-                    throw new Error('Failed to upload custom image');
-                }
+            const response = await fetch('/api/imgbb/upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: base64Image })
+            });
 
-                const data = await response.json();
-                setScreenshotUrl(data.url);
-                setIsCapturing(false);
-            };
-            reader.onerror = () => {
-                throw new Error('Failed to read file');
-            };
+            if (!response.ok) {
+                throw new Error('Failed to upload custom image');
+            }
+
+            const data = await response.json();
+            setScreenshotUrl(data.url);
         } catch (error) {
             console.error('Upload Error:', error);
             setCaptureError(error.message);
+        } finally {
             setIsCapturing(false);
         }
     };
@@ -205,7 +204,7 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
                         />
                         <div className="mt-2 pl-8 flex justify-between text-xs font-medium text-gray-500 dark:text-gray-400">
                             <span>{postContent.length} characters</span>
-                            <span className="text-gray-400 dark:text-gray-500 truncate max-w-[60%]">{article.link}</span>
+                            <a href={article.link} target="_blank" rel="noopener noreferrer" className="text-blue-500 dark:text-blue-400 hover:underline truncate max-w-[60%]">{article.link}</a>
                         </div>
                     </div>
 
@@ -333,21 +332,36 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
                         )}
                     </div>
                 ) : (
-                    <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-800">
-                        <div className="flex items-center gap-3">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-800">
+                        <span className="text-sm font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">Save to Buffer:</span>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                onClick={() => handlePublish('now')}
+                                disabled={isPublishing || isCapturing}
+                                className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-transparent text-sm font-medium text-white shadow-sm transition-all duration-200 bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:opacity-70 disabled:cursor-not-allowed"
+                            >
+                                {isPublishing && bufferMode === 'now' ? '...' : 'Now'}
+                            </button>
+                            <button
+                                onClick={() => handlePublish('prioritize')}
+                                disabled={isPublishing || isCapturing}
+                                className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-transparent text-sm font-medium text-white shadow-sm transition-all duration-200 bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:opacity-70 disabled:cursor-not-allowed"
+                            >
+                                {isPublishing && bufferMode === 'prioritize' ? '...' : 'Prioritize'}
+                            </button>
+                            <button
+                                onClick={() => handlePublish('next')}
+                                disabled={isPublishing || isCapturing}
+                                className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
+                            >
+                                {isPublishing && bufferMode === 'next' ? '...' : 'Next Available'}
+                            </button>
                             <button
                                 onClick={() => handlePublish('draft')}
                                 disabled={isPublishing || isCapturing}
-                                className="inline-flex items-center justify-center rounded-md px-6 py-2.5 border border-transparent text-sm font-medium text-white shadow-sm transition-all duration-200 bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:bg-blue-400 disabled:dark:bg-blue-900/50 disabled:opacity-70 disabled:cursor-not-allowed"
+                                className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
                             >
-                                {isPublishing && bufferMode === 'draft' ? 'Publishing...' : 'Save to Buffer Drafts'}
-                            </button>
-                            <button
-                                onClick={() => handlePublish('queue')}
-                                disabled={isPublishing || isCapturing}
-                                className="inline-flex items-center justify-center rounded-md px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
-                            >
-                                {isPublishing && bufferMode === 'queue' ? 'Publishing...' : 'Add to Top of Queue'}
+                                {isPublishing && bufferMode === 'draft' ? '...' : 'Drafts'}
                             </button>
                         </div>
                     </div>

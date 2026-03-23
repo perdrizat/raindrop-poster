@@ -160,6 +160,76 @@ describe('PublishPage', () => {
             expect(screen.getByText('Retried tweet')).toBeInTheDocument();
         });
     });
+    it('shows extracted author in the author field after generation', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        generateProposals.mockResolvedValueOnce({ proposals: ['Tweet 1'], author: 'Jane Doe' });
+
+        render(<PublishPage selectedTag="testing" onSelectProposal={() => {}} />);
+
+        await waitFor(() => {
+            expect(screen.getByDisplayValue('Jane Doe')).toBeInTheDocument();
+        });
+    });
+
+    it('allows overriding the author and passes it to onSelectProposal', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        generateProposals.mockResolvedValueOnce({ proposals: ['Tweet 1'], author: 'Jane Doe' });
+        const onSelect = vi.fn();
+        const user = userEvent.setup();
+
+        render(<PublishPage selectedTag="testing" onSelectProposal={onSelect} />);
+
+        await waitFor(() => {
+            expect(screen.getByText('Tweet 1')).toBeInTheDocument();
+        });
+
+        // Override the author
+        const authorInput = screen.getByLabelText(/Author/i);
+        await user.clear(authorInput);
+        await user.type(authorInput, 'John Smith');
+
+        // Click Review & Publish on the AI proposal
+        const reviewButtons = screen.getAllByRole('button', { name: /Review & Publish/i });
+        await user.click(reviewButtons[0]);
+
+        expect(onSelect).toHaveBeenCalledWith(
+            'Tweet 1',
+            expect.objectContaining({ extractedAuthor: 'John Smith' })
+        );
+    });
+
+    it('renders custom post textarea and passes it to onSelectProposal', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        generateProposals.mockResolvedValueOnce({ proposals: ['AI tweet'], author: null });
+        const onSelect = vi.fn();
+        const user = userEvent.setup();
+
+        render(<PublishPage selectedTag="testing" onSelectProposal={onSelect} />);
+
+        await waitFor(() => {
+            expect(screen.getByText('AI tweet')).toBeInTheDocument();
+        });
+
+        // Custom proposal section should exist
+        const customTextarea = screen.getByPlaceholderText(/Write your own post text/i);
+        expect(customTextarea).toBeInTheDocument();
+
+        // Review button should be disabled when empty
+        const reviewButtons = screen.getAllByRole('button', { name: /Review & Publish/i });
+        const customReviewBtn = reviewButtons[reviewButtons.length - 1]; // last one is for custom
+        expect(customReviewBtn).toBeDisabled();
+
+        // Type a custom proposal
+        await user.type(customTextarea, 'My custom post');
+        expect(customReviewBtn).not.toBeDisabled();
+
+        await user.click(customReviewBtn);
+        expect(onSelect).toHaveBeenCalledWith(
+            'My custom post',
+            expect.objectContaining({ _id: 1, title: 'Article 1' })
+        );
+    });
+
     it('passes custom posting objectives from localStorage to aiService', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
         generateProposals.mockResolvedValueOnce({ proposals: ['Test proposal'], author: null });

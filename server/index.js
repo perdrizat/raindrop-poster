@@ -30,7 +30,7 @@ app.use(cors({
     origin: 'http://localhost:5173', // Must exactly match the Vite frontend for credentials
     credentials: true // Allow cookies to be sent along with API requests
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 
 // Trust proxy if we are behind one (useful for dev containers or deployments)

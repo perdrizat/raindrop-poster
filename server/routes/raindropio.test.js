@@ -25,7 +25,10 @@ app.use(session({
 // Route protection mock middleware
 app.use((req, res, next) => {
     if (req.headers.authorization === 'Bearer mock-rd-token') {
-        req.session.raindropio = { accessToken: 'mock-rd-token' };
+        req.session.raindropio = {
+            accessToken: 'mock-rd-token',
+            expiresAt: Date.now() + 60 * 60 * 1000 // 1 hour from now
+        };
     }
     next();
 });
@@ -43,7 +46,7 @@ describe('Raindrop API Routes', () => {
         it('should return 401 if user is not authenticated with Raindrop', async () => {
             const res = await request(app).get('/api/raindropio/test');
             expect(res.status).toBe(401);
-            expect(res.body).toEqual({ error: 'Not authenticated with Raindrop' });
+            expect(res.body.error).toMatch(/expired|reconnect/i);
         });
 
         it('should return success and username if token is valid', async () => {
@@ -69,7 +72,7 @@ describe('Raindrop API Routes', () => {
         it('should return 401 if user is not authenticated with Raindrop', async () => {
             const res = await request(app).get('/api/raindropio/tags');
             expect(res.status).toBe(401);
-            expect(res.body).toEqual({ error: 'Raindrop.io connection required' });
+            expect(res.body.error).toMatch(/expired|reconnect/i);
         });
 
         it('should return success and tags array if token is valid', async () => {
@@ -103,7 +106,7 @@ describe('Raindrop API Routes', () => {
         it('should return 401 if user is not authenticated with Raindrop', async () => {
             const res = await request(app).get('/api/raindropio/raindrops/0');
             expect(res.status).toBe(401);
-            expect(res.body).toEqual({ error: 'Not authenticated with Raindrop' });
+            expect(res.body.error).toMatch(/expired|reconnect/i);
         });
 
         it('should return success and items array if token is valid', async () => {
@@ -137,7 +140,7 @@ describe('Raindrop API Routes', () => {
                 .send({ tags: ['tag1'] });
 
             expect(res.status).toBe(401);
-            expect(res.body).toEqual({ error: 'Not authenticated with Raindrop' });
+            expect(res.body.error).toMatch(/expired|reconnect/i);
         });
 
         it('should return success if token is valid and Raindrop API updates successfully', async () => {
@@ -178,4 +181,3 @@ describe('Raindrop API Routes', () => {
         });
     });
 });
-

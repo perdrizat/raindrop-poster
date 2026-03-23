@@ -38,7 +38,7 @@ The application supports the following core workflows:
   * **Intelligent Viewport Scaling:** Screenshots gracefully handle extremely tall DOM content by virtually expanding the viewport up to 8000px to capture quotes anywhere on the page without clipping.
   * **Anti-Bot Evasion:** Robust headless scraping that bypasses strict Cloudflare Turnstile blocks (e.g. on SSRN) using stealth plugins, custom request interception, and automatic fallbacks to Wayback Machine CDNs.
   * **Custom Image Uploading:** Don't like the generated image? Easily drag-and-drop or paste your own images directly into the Review UI.
-* **Publishing Workflow:** Review AI proposals, verify screenshot attachments, and publish directly to Buffer.
+* **Publishing Workflow:** Review AI proposals, verify screenshot attachments, and publish to Buffer with four scheduling modes: **Now** (immediate), **Prioritize** (top of queue), **Next Available** (end of queue), or **Drafts**.
 * **X/Twitter Extraction Bypass:** Advanced regex routing transparently swaps restricted `x.com` / `twitter.com` headless payloads with the public `vxtwitter` API to cleanly scrape tweet text without authentication.
 
 ### 🚀 Buffer Multi-Channel Integration
@@ -58,3 +58,13 @@ docker compose up -d
 The app will be available at `http://localhost` (port 80). On first launch, the **Setup Wizard** will guide you through entering your API keys (Raindrop.io, Venice AI, Buffer, ImgBB). All credentials and sessions are stored in a local SQLite database, persisted in a Docker volume across container restarts.
 
 > **Note:** You'll need a Raindrop.io OAuth app with its redirect URI set to `http://yourdomain/api/auth/raindropio/callback`.
+
+## Screenshot Testing
+
+A visual regression script exercises the screenshot pipeline against 5 representative URLs (Medium, X/Twitter, math-heavy blogs, consent-walled sites, crypto articles):
+
+```bash
+./scripts/screenshot-test.sh
+```
+
+This runs `server/scripts/screenshot-test.mjs`, captures screenshots for each test case, uploads them to ImgBB, and downloads them to `/tmp/raindrop-screenshots/` for inspection.

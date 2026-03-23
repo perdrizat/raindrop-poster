@@ -2,6 +2,11 @@ export const fetchTags = async () => {
     try {
         console.log("Fetching tags from real backend...");
         const response = await fetch('/api/raindropio/tags');
+
+        if (response.status === 401) {
+            throw new Error('unauthorized');
+        }
+
         const data = await response.json();
 
         if (!data.tags) return [];
@@ -11,6 +16,9 @@ export const fetchTags = async () => {
         return data.tags.map(tag => typeof tag === 'object' ? tag._id : tag);
     } catch (err) {
         console.error("Error fetching Raindrop tags:", err);
+        if (err.message === 'unauthorized') {
+            throw err;
+        }
         return [];
     }
 };
@@ -70,6 +78,10 @@ export const updateBookmarkTags = async (bookmarkId, tags) => {
             body: JSON.stringify({ tags }),
         });
 
+        if (response.status === 401) {
+            throw new Error('unauthorized');
+        }
+
         if (!response.ok) {
             console.error(`Failed to update tags for bookmark ${bookmarkId}`);
             return false;
@@ -79,7 +91,9 @@ export const updateBookmarkTags = async (bookmarkId, tags) => {
         return data.success === true;
     } catch (err) {
         console.error("Error updating formatting bookmark tags:", err);
+        if (err.message === 'unauthorized') {
+            throw err;
+        }
         return false;
     }
 };
-

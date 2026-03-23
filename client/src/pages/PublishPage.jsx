@@ -14,6 +14,8 @@ const PublishPage = ({ selectedTag, onSelectProposal }) => {
     const [proposals, setProposals] = useState([]);
     const [extractedAuthor, setExtractedAuthor] = useState(null);
     const [generationError, setGenerationError] = useState(null);
+    const [authorOverride, setAuthorOverride] = useState(null);
+    const [customProposal, setCustomProposal] = useState('');
 
     const currentArticle = articles.length > 0 && currentIndex >= 0 && currentIndex < articles.length
         ? articles[currentIndex]
@@ -24,6 +26,8 @@ const PublishPage = ({ selectedTag, onSelectProposal }) => {
         setIsGenerating(true);
         setGenerationError(null);
         setProposals([]);
+        setAuthorOverride(null);
+        setCustomProposal('');
         try {
             const settings = loadSettings();
             const customPrompt = settings.postingObjectives || 'Create engaging tweets.';
@@ -158,6 +162,21 @@ const PublishPage = ({ selectedTag, onSelectProposal }) => {
                             </blockquote>
                         </div>
                     )}
+
+                    {/* Author (extracted by AI, editable) */}
+                    <div className="mt-4 pt-4 border-t border-dashed border-gray-200 dark:border-gray-700">
+                        <label className="text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase mb-1 block" htmlFor="author-override">
+                            Author
+                        </label>
+                        <input
+                            id="author-override"
+                            type="text"
+                            value={authorOverride !== null ? authorOverride : (extractedAuthor || '')}
+                            onChange={e => setAuthorOverride(e.target.value)}
+                            placeholder={isGenerating ? 'Detecting author...' : 'Unknown author'}
+                            className="w-full sm:w-72 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md p-2 text-sm text-gray-800 dark:text-gray-200"
+                        />
+                    </div>
                 </div>
 
                 <div className="mb-8">
@@ -203,7 +222,7 @@ const PublishPage = ({ selectedTag, onSelectProposal }) => {
                                             {proposal.length} characters
                                         </span>
                                         <button
-                                            onClick={() => onSelectProposal(proposal, { ...currentArticle, extractedAuthor })}
+                                            onClick={() => onSelectProposal(proposal, { ...currentArticle, extractedAuthor: authorOverride || extractedAuthor })}
                                             className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
                                         >
                                             Review & Publish
@@ -213,6 +232,36 @@ const PublishPage = ({ selectedTag, onSelectProposal }) => {
                             ))}
                         </div>
                     ) : null}
+                </div>
+
+                {/* Custom Proposal */}
+                <div className="mb-8">
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                        <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        Custom Post
+                    </h3>
+                    <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                        <textarea
+                            value={customProposal}
+                            onChange={e => setCustomProposal(e.target.value)}
+                            className="w-full bg-transparent border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md p-3 resize-y min-h-[80px] text-gray-800 dark:text-gray-200 leading-relaxed font-sans placeholder-gray-400 dark:placeholder-gray-500"
+                            placeholder="Write your own post text..."
+                        />
+                        <div className="mt-3 flex justify-between items-center">
+                            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                                {customProposal.length} characters
+                            </span>
+                            <button
+                                onClick={() => onSelectProposal(customProposal, { ...currentArticle, extractedAuthor: authorOverride || extractedAuthor })}
+                                disabled={!customProposal.trim()}
+                                className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                Review & Publish
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center justify-between pt-6 border-t border-gray-200 dark:border-gray-800 gap-4">

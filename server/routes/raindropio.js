@@ -1,25 +1,27 @@
 import express from 'express';
 import axios from 'axios';
-import { getSetting } from '../services/db.js';
+import { withTokenRefresh } from '../services/raindropAuth.js';
 
 const router = express.Router();
 
 router.get('/test', async (req, res) => {
     try {
-        const token = req.session?.raindropio?.accessToken || await getSetting('RAINDROPIO_ACCESS_TOKEN');
-        if (!token) {
-            return res.status(401).json({ error: 'Not authenticated with Raindrop' });
-        }
+        console.log('Raindrop API → GET /rest/v1/user');
+        const data = await withTokenRefresh(async (token) => {
+            const response = await axios.get('https://api.raindrop.io/rest/v1/user', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return response.data;
+        }, req);
 
-        const response = await axios.get('https://api.raindrop.io/rest/v1/user', {
-            headers: {
-                Authorization: `Bearer ${token}`
-            }
-        });
-
-        res.json({ success: true, user: response.data.user.fullName || response.data.user.name });
+        const userName = data.user.fullName || data.user.name;
+        console.log(`Raindrop API ✓ user=${userName}`);
+        res.json({ success: true, user: userName });
     } catch (error) {
-        console.error('Raindrop API Test Error:', error.response?.data || error.message);
+        if (error.status === 401) {
+            return res.status(401).json({ error: error.message });
+        }
+        console.error('Raindrop API ✗ GET /rest/v1/user:', error.response?.data || error.message);
         res.status(502).json({ error: 'Failed to connect to Raindrop API' });
     }
 });
@@ -27,21 +29,21 @@ router.get('/test', async (req, res) => {
 // --- FETCH TAGS ---
 router.get('/tags', async (req, res) => {
     try {
-        const token = req.session?.raindropio?.accessToken || await getSetting('RAINDROPIO_ACCESS_TOKEN');
-        if (!token) {
-            return res.status(401).json({ error: 'Raindrop.io connection required' });
-        }
+        console.log('Raindrop API → GET /rest/v1/tags');
+        const data = await withTokenRefresh(async (token) => {
+            const response = await axios.get('https://api.raindrop.io/rest/v1/tags', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return response.data;
+        }, req);
 
-        const response = await axios.get('https://api.raindrop.io/rest/v1/tags', {
-            headers: {
-                Authorization: `Bearer ${token}`
-            }
-        });
-
-        // The Raindrop API returns tags under the 'items' key
-        res.json({ success: true, tags: response.data.items });
+        console.log(`Raindrop API ✓ ${data.items?.length ?? 0} tags`);
+        res.json({ success: true, tags: data.items });
     } catch (error) {
-        console.error('Raindrop API Tags Error:', error.response?.data || error.message);
+        if (error.status === 401) {
+            return res.status(401).json({ error: error.message });
+        }
+        console.error('Raindrop API ✗ GET /rest/v1/tags:', error.response?.data || error.message);
         res.status(502).json({ error: 'Failed to fetch tags from Raindrop API' });
     }
 });
@@ -49,23 +51,24 @@ router.get('/tags', async (req, res) => {
 // --- FETCH TAGGED ITEMS ---
 router.get('/raindrops/0', async (req, res) => {
     try {
-        const token = req.session?.raindropio?.accessToken || await getSetting('RAINDROPIO_ACCESS_TOKEN');
-        if (!token) {
-            return res.status(401).json({ error: 'Not authenticated with Raindrop' });
-        }
-
         const queryParams = req.query.search ? `?search=${req.query.search}` : '';
         const url = `https://api.raindrop.io/rest/v1/raindrops/0${queryParams}`;
 
-        const response = await axios.get(url, {
-            headers: {
-                Authorization: `Bearer ${token}`
-            }
-        });
+        console.log(`Raindrop API → GET /rest/v1/raindrops/0${queryParams}`);
+        const data = await withTokenRefresh(async (token) => {
+            const response = await axios.get(url, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return response.data;
+        }, req);
 
-        res.json({ success: true, items: response.data.items });
+        console.log(`Raindrop API ✓ ${data.items?.length ?? 0} items`);
+        res.json({ success: true, items: data.items });
     } catch (error) {
-        console.error('Raindrop API Items Error:', error.response?.data || error.message);
+        if (error.status === 401) {
+            return res.status(401).json({ error: error.message });
+        }
+        console.error('Raindrop API ✗ GET /rest/v1/raindrops/0:', error.response?.data || error.message);
         res.status(502).json({ error: 'Failed to fetch items from Raindrop API' });
     }
 });
@@ -73,23 +76,24 @@ router.get('/raindrops/0', async (req, res) => {
 // --- UPDATE BOOKMARK TAGS ---
 router.put('/bookmark/:id', async (req, res) => {
     try {
-        const token = req.session?.raindropio?.accessToken || await getSetting('RAINDROPIO_ACCESS_TOKEN');
-        if (!token) {
-            return res.status(401).json({ error: 'Not authenticated with Raindrop' });
-        }
-
         const { id } = req.params;
         const { tags } = req.body;
 
-        const response = await axios.put(`https://api.raindrop.io/rest/v1/raindrop/${id}`, { tags }, {
-            headers: {
-                Authorization: `Bearer ${token}`
-            }
-        });
+        console.log(`Raindrop API → PUT /rest/v1/raindrop/${id} tags=[${tags.join(', ')}]`);
+        const data = await withTokenRefresh(async (token) => {
+            const response = await axios.put(`https://api.raindrop.io/rest/v1/raindrop/${id}`, { tags }, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return response.data;
+        }, req);
 
-        res.json({ success: true, item: response.data.item });
+        console.log(`Raindrop API ✓ updated bookmark ${id}`);
+        res.json({ success: true, item: data.item });
     } catch (error) {
-        console.error('Raindrop API Update Bookmark Error:', error.response?.data || error.message);
+        if (error.status === 401) {
+            return res.status(401).json({ error: error.message });
+        }
+        console.error(`Raindrop API ✗ PUT /rest/v1/raindrop/${req.params.id}:`, error.response?.data || error.message);
         res.status(502).json({ error: 'Failed to update bookmark in Raindrop API' });
     }
 });

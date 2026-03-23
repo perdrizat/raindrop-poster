@@ -63,6 +63,7 @@ router.get('/buffer/test', async (req, res) => {
             }
         `;
 
+        console.log('Buffer API → GetChannels');
         const response = await axios.post('https://api.buffer.com/1/graphql', {
             query,
             variables: {
@@ -78,11 +79,13 @@ router.get('/buffer/test', async (req, res) => {
         });
 
         if (response.data.errors) {
+            console.error(`Buffer API ✗ GetChannels: ${response.data.errors[0].message}`);
             return res.status(502).json({ error: response.data.errors[0].message });
         }
 
         const channels = response.data.data.channels;
         const services = [...new Set(channels.map(ch => ch.service))];
+        console.log(`Buffer API ✓ ${channels.length} channels on ${services.join(', ')}`);
         res.json({
             success: true,
             channels,
@@ -123,12 +126,14 @@ router.get('/imgbb/test', async (req, res) => {
         params.append('image', testImageBase64);
         params.append('name', 'connection_test_raindrop');
 
+        console.log('ImgBB API → test upload');
         const response = await axios.post(
             `https://api.imgbb.com/1/upload?key=${key}&expiration=60`,
             params
         );
 
         if (response.data && response.data.success) {
+            console.log('ImgBB API ✓ test upload succeeded');
             res.json({
                 success: true,
                 message: 'ImgBB API key is valid and connected',
@@ -233,6 +238,7 @@ router.get('/:provider/callback', async (req, res) => {
                     console.log('Attempting to save RAINDROPIO_ACCESS_TOKEN to global Settings...');
                     await setSetting('RAINDROPIO_ACCESS_TOKEN', response.data.access_token);
                     if (response.data.refresh_token) await setSetting('RAINDROPIO_REFRESH_TOKEN', response.data.refresh_token);
+                    if (response.data.expires_in) await setSetting('RAINDROPIO_EXPIRES_AT', String(Date.now() + response.data.expires_in * 1000));
                     console.log('Successfully saved RAINDROPIO_ACCESS_TOKEN');
                 } catch (dbErr) {
                     console.error('CRITICAL: Failed to save Raindrop tokens to global Settings', dbErr);
