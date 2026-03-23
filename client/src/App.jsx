@@ -74,9 +74,12 @@ function App() {
       <header className="w-full max-w-4xl flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
         <div>
           <button onClick={() => setActiveView('publish')} className="text-left focus:outline-none">
-            <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-              Raindrop Poster
-            </h1>
+            <div className="flex items-center gap-3">
+              <img src="/android-chrome-192x192.png" alt="Raindrop Poster" className="w-9 h-9 rounded-lg" />
+              <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                Raindrop Poster
+              </h1>
+            </div>
           </button>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
             {activeView === 'setup' ? 'Configure your integrations and workflow.' : 'Curate and publish your content.'}
@@ -84,11 +87,16 @@ function App() {
         </div>
 
         <div className="flex items-center gap-4">
+          {import.meta.env.VITE_BUILD_TIME && (
+            <span className="hidden sm:block text-xs text-gray-400 dark:text-gray-500 font-mono">
+              {import.meta.env.VITE_BUILD_TIME}
+            </span>
+          )}
           <nav className="flex space-x-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
             <button
               onClick={() => setActiveView('publish')}
               disabled={!isSystemConfigured}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors 
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors
                 ${activeView === 'publish' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}
                 ${!isSystemConfigured ? 'opacity-50 cursor-not-allowed hidden sm:block' : ''}`}
             >

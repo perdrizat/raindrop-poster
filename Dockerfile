@@ -11,6 +11,9 @@ RUN cd client && npm install
 COPY client/ ./client/
 # Add this so it doesn't fail if we have memory limits during build
 ENV NODE_OPTIONS=--max_old_space_size=4096
+# Stamp the build time so the UI can display it. date runs at build time,
+# giving the exact minute docker compose build was initiated.
+RUN echo "VITE_BUILD_TIME=$(date +'%Y-%m-%d %H:%M')" >> /app/client/.env
 RUN cd client && npm run build
 
 # Stage 2: Setup the production Node server with Puppeteer
