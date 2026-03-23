@@ -1,99 +1,116 @@
+/**
+ * Finds a quote in the page DOM, highlights it with yellow overlay divs,
+ * and returns the bounding rect for screenshot clipping.
+ *
+ * IMPORTANT: All helper functions must be defined INSIDE findQuoteInDOM.
+ * page.evaluate() serialises only the function body — helpers defined at
+ * module scope are not visible in the browser context and will throw
+ * ReferenceError at runtime.
+ *
+ * Multi-tweet pages (vxtwitter / x.com threads) are handled by searching
+ * each tweet article independently — this prevents the fuzzy matcher from
+ * spanning across tweet boundaries and producing spurious over-matches.
+ *
+ * Match threshold: a candidate must cover ≥ 50% of the quote words to be
+ * accepted (was 30% — raised to reduce false positives on threaded content).
+ *
+ * "First 3 words" heuristic: when scanning for a start position, require
+ * that the 2nd and 3rd quote words also appear within the next 6 tokens.
+ * This avoids false starts on common words like "the", "but", "a".
+ */
 export const findQuoteInDOM = (quote) => {
     try {
         if (!quote) return { found: false, rect: null };
 
-        const normalize = (text) => text.replace(/\s+/g, ' ').trim().toLowerCase().replace(/[‘’`´]/g, "'").replace(/[“”«»]/g, '"');
-        const normalizedQuote = normalize(quote);
+        // ── Helpers (must be inline for page.evaluate serialisation) ──────────
 
-        // Include all alphanumeric words, even short ones, for sequential matching
-        const regex = /[a-z0-9]+/g;
-        let match;
-        const quoteWords = [];
-        while ((match = regex.exec(normalizedQuote)) !== null) {
-            quoteWords.push(match[0]);
-        }
-
-        if (quoteWords.length === 0) return { found: false, rect: null };
-
-        // Collect all text nodes
-        const rootNode = document.querySelector('article[data-testid="tweet"]') || document.querySelector('article') || document.body;
-        const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT, {
-            acceptNode: function (node) {
-                const parent = node.parentNode;
-                if (!parent) return NodeFilter.FILTER_REJECT;
-                if (parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE' || parent.tagName === 'NOSCRIPT') {
-                    return NodeFilter.FILTER_REJECT;
+        function collectTokens(rootNode) {
+            const tokens = [];
+            const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT, {
+                acceptNode: function (node) {
+                    const parent = node.parentNode;
+                    if (!parent) return NodeFilter.FILTER_REJECT;
+                    if (parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE' || parent.tagName === 'NOSCRIPT') {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    return NodeFilter.FILTER_ACCEPT;
                 }
-                return NodeFilter.FILTER_ACCEPT;
-            }
-        }, false);
+            }, false);
 
-        const globalTokens = [];
-        let node;
-        while (node = walker.nextNode()) {
-            const rawText = node.nodeValue;
-            let m;
-            const nodeRegex = /[a-z0-9]+/ig;
-            while ((m = nodeRegex.exec(rawText)) !== null) {
-                globalTokens.push({
-                    word: m[0].toLowerCase(),
-                    node: node,
-                    index: m.index,
-                    length: m[0].length
-                });
+            let node;
+            while (node = walker.nextNode()) {
+                const rawText = node.nodeValue;
+                let m;
+                const nodeRegex = /[a-z0-9]+/ig;
+                while ((m = nodeRegex.exec(rawText)) !== null) {
+                    tokens.push({ word: m[0].toLowerCase(), node, index: m.index, length: m[0].length });
+                }
             }
+            return tokens;
         }
 
-        let maxScore = 0;
-        let bestStart = 0;
-        let bestEnd = 0;
+        function scoreTokens(tokens, quoteWords) {
+            let maxScore = 0;
+            let bestStart = 0;
+            let bestEnd = 0;
 
-        for (let i = 0; i < globalTokens.length; i++) {
-            const firstQuoteWord = quoteWords[0];
+            const firstQuoteWord  = quoteWords[0];
             const secondQuoteWord = quoteWords.length > 1 ? quoteWords[1] : null;
+            const thirdQuoteWord  = quoteWords.length > 2 ? quoteWords[2] : null;
 
-            if (globalTokens[i].word !== firstQuoteWord && globalTokens[i].word !== secondQuoteWord) continue;
+            for (let i = 0; i < tokens.length; i++) {
+                if (tokens[i].word !== firstQuoteWord) continue;
 
-            let quoteIdx = 0;
-            let matchCount = 0;
-            let currentEnd = i;
-            let misses = 0;
+                // "First 3 words" heuristic: before committing to this start
+                // position, verify the 2nd (and 3rd) quote words appear among
+                // the next 6 tokens. Prevents false starts on common words.
+                if (secondQuoteWord) {
+                    const nearby = tokens.slice(i + 1, i + 7).map(function(t) { return t.word; });
+                    if (nearby.indexOf(secondQuoteWord) === -1) continue;
+                    if (thirdQuoteWord && nearby.indexOf(thirdQuoteWord) === -1) continue;
+                }
 
-            for (let j = i; j < Math.min(globalTokens.length, i + quoteWords.length + 20); j++) {
-                if (quoteIdx >= quoteWords.length) break;
+                let quoteIdx = 0;
+                let matchCount = 0;
+                let currentEnd = i;
+                let misses = 0;
 
-                if (globalTokens[j].word === quoteWords[quoteIdx]) {
-                    matchCount++;
-                    quoteIdx++;
-                    currentEnd = j;
-                    misses = 0;
-                } else if (globalTokens[j].word === quoteWords[quoteIdx + 1]) {
-                    // skipped one word in the quote
-                    matchCount++;
-                    quoteIdx += 2;
-                    currentEnd = j;
-                    misses = 0;
-                } else {
-                    misses++;
-                    if (misses > 45) break; // Increased tolerance for heavy formatting like SSRN commas/citations
+                for (let j = i; j < Math.min(tokens.length, i + quoteWords.length + 20); j++) {
+                    if (quoteIdx >= quoteWords.length) break;
+
+                    if (tokens[j].word === quoteWords[quoteIdx]) {
+                        matchCount++;
+                        quoteIdx++;
+                        currentEnd = j;
+                        misses = 0;
+                    } else if (tokens[j].word === quoteWords[quoteIdx + 1]) {
+                        // skipped one word in the quote
+                        matchCount++;
+                        quoteIdx += 2;
+                        currentEnd = j;
+                        misses = 0;
+                    } else {
+                        misses++;
+                        if (misses > 45) break; // tolerance for heavy formatting
+                    }
+                }
+
+                if (matchCount > maxScore) {
+                    maxScore = matchCount;
+                    bestStart = i;
+                    bestEnd = currentEnd;
                 }
             }
 
-            const score = matchCount;
-
-            if (score > maxScore) {
-                maxScore = score;
-                bestStart = i;
-                bestEnd = currentEnd;
-            }
+            return { maxScore, startIdx: bestStart, endIdx: bestEnd };
         }
 
-        if (maxScore > quoteWords.length * 0.3) {
-            const startToken = globalTokens[bestStart];
-            const endToken = globalTokens[bestEnd];
+        function applyHighlights(tokens, bestStart, bestEnd, maxScore, quoteLength) {
+            const startToken = tokens[bestStart];
+            const endToken   = tokens[bestEnd];
 
             const startNode = startToken.node;
-            const endNode = endToken.node;
+            const endNode   = endToken.node;
 
             const range = document.createRange();
             range.setStart(startNode, startToken.index);
@@ -116,13 +133,13 @@ export const findQuoteInDOM = (quote) => {
             }
 
             if (rects.length === 0) {
-                // Fallback mark tags for jsdom
+                // Fallback: wrap nodes in <mark> tags (used by jsdom in tests)
                 const nodesToWrap = new Set();
                 for (let k = bestStart; k <= bestEnd; k++) {
-                    nodesToWrap.add(globalTokens[k].node);
+                    nodesToWrap.add(tokens[k].node);
                 }
 
-                nodesToWrap.forEach(n => {
+                nodesToWrap.forEach(function(n) {
                     const mark = document.createElement('mark');
                     mark.style.backgroundColor = '#FFEB3B';
                     mark.style.color = 'black';
@@ -132,21 +149,18 @@ export const findQuoteInDOM = (quote) => {
                     }
                     if (mark.getBoundingClientRect) {
                         const r = mark.getBoundingClientRect();
-                        if (r.width > 0 && r.height > 0) {
-                            rects.push(r);
-                        }
+                        if (r.width > 0 && r.height > 0) rects.push(r);
                     } else {
-                        // jsdom mock
                         rects.push({ x: 10, y: 10, width: 100, height: 20 });
                     }
                 });
             } else {
-                rects.forEach(r => {
+                rects.forEach(function(r) {
                     const hl = document.createElement('div');
                     hl.style.position = 'absolute';
                     hl.style.left = (r.left + (window.scrollX || 0)) + 'px';
-                    hl.style.top = (r.top + (window.scrollY || 0)) + 'px';
-                    hl.style.width = r.width + 'px';
+                    hl.style.top  = (r.top  + (window.scrollY || 0)) + 'px';
+                    hl.style.width  = r.width  + 'px';
                     hl.style.height = r.height + 'px';
                     hl.style.backgroundColor = '#FFEB3B';
                     hl.style.opacity = '0.4';
@@ -161,18 +175,75 @@ export const findQuoteInDOM = (quote) => {
             }
 
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-            for (const r of rects) {
+            for (let i = 0; i < rects.length; i++) {
+                const r = rects[i];
                 if (r.width === 0 || r.height === 0) continue;
                 if (r.x < minX) minX = r.x;
                 if (r.y < minY) minY = r.y;
-                if (r.x + r.width > maxX) maxX = r.x + r.width;
+                if (r.x + r.width  > maxX) maxX = r.x + r.width;
                 if (r.y + r.height > maxY) maxY = r.y + r.height;
             }
 
-            return { found: true, rect: { x: minX, y: minY, width: maxX - minX, height: maxY - minY }, debugInfo: { maxScore, bestStart, bestEnd, startWord: startToken.word, endWord: endToken.word, quoteLength: quoteWords.length } };
+            return {
+                found: true,
+                rect: { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
+                debugInfo: { maxScore, bestStart, bestEnd, startWord: startToken.word, endWord: endToken.word, quoteLength }
+            };
         }
 
-        return { found: false, rect: null, debugInfo: { maxScore, quoteLength: quoteWords.length } };
+        // ── Main logic ─────────────────────────────────────────────────────────
+
+        const normalize = function(text) {
+            return text.replace(/\s+/g, ' ').trim().toLowerCase()
+                .replace(/[''`´]/g, "'").replace(/[""«»]/g, '"');
+        };
+        const normalizedQuote = normalize(quote);
+
+        const regex = /[a-z0-9]+/g;
+        let match;
+        const quoteWords = [];
+        while ((match = regex.exec(normalizedQuote)) !== null) {
+            quoteWords.push(match[0]);
+        }
+
+        if (quoteWords.length === 0) return { found: false, rect: null };
+
+        // For multi-tweet pages (threads), search each tweet article separately
+        // to prevent the matcher crossing tweet boundaries.
+        // For all other pages, search document.body directly — using
+        // querySelector('article') is unreliable because many sites have multiple
+        // <article> elements (e.g. sidebar teasers) and the first one found may
+        // not be the main content. The 50% score threshold and "first 3 words"
+        // heuristic already prevent false positives across the full body.
+        const tweetArticles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+        const searchRoots = tweetArticles.length > 0
+            ? tweetArticles
+            : [document.body];
+
+        let bestScore  = 0;
+        let bestTokens = [];
+        let bestStart  = 0;
+        let bestEnd    = 0;
+
+        for (let ri = 0; ri < searchRoots.length; ri++) {
+            const tokens = collectTokens(searchRoots[ri]);
+            const result = scoreTokens(tokens, quoteWords);
+
+            if (result.maxScore > bestScore) {
+                bestScore  = result.maxScore;
+                bestTokens = tokens;
+                bestStart  = result.startIdx;
+                bestEnd    = result.endIdx;
+            }
+        }
+
+        // Require at least half the quote words to match
+        if (bestScore <= quoteWords.length * 0.5) {
+            return { found: false, rect: null, debugInfo: { maxScore: bestScore, quoteLength: quoteWords.length } };
+        }
+
+        return applyHighlights(bestTokens, bestStart, bestEnd, bestScore, quoteWords.length);
+
     } catch (e) {
         return { found: false, rect: null, debugError: e.stack || e.message };
     }

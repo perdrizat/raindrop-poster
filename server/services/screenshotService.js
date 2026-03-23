@@ -1,4 +1,4 @@
-import { getBrowser } from './scraperService.js';
+import { acquireBrowser, releaseBrowser } from './scraperService.js';
 import { findQuoteInDOM } from './highlighter.js';
 
 /**
@@ -17,9 +17,9 @@ export const captureQuoteScreenshot = async (articleUrl, quoteText, attribution,
         return coverImageUrl;
     }
 
+    const browser = await acquireBrowser();
     let page;
     try {
-        const browser = await getBrowser();
         page = await browser.newPage();
 
         await page.setViewport({
@@ -53,6 +53,46 @@ export const captureQuoteScreenshot = async (articleUrl, quoteText, attribution,
         }
 
 
+        // Auto-accept Usercentrics consent the moment the UC_UI / __ucCmp API is
+        // assigned by the CMP script, and also watch for the shadow DOM button via
+        // MutationObserver. This runs before any page scripts (evaluateOnNewDocument)
+        // so consent is granted before the article body is conditionally loaded.
+        await page.evaluateOnNewDocument(() => {
+            let _UC_UI, _ucCmp;
+            const autoAccept = (api) => {
+                const run = () => { try { api.acceptAllConsents(); } catch (e) {} };
+                setTimeout(run, 50);
+                setTimeout(run, 500);
+                setTimeout(run, 1500);
+            };
+            try {
+                Object.defineProperty(window, 'UC_UI', {
+                    configurable: true,
+                    get: () => _UC_UI,
+                    set: (val) => { _UC_UI = val; autoAccept(val); }
+                });
+                Object.defineProperty(window, '__ucCmp', {
+                    configurable: true,
+                    get: () => _ucCmp,
+                    set: (val) => { _ucCmp = val; autoAccept(val); }
+                });
+            } catch (e) {}
+
+            // Fallback: watch for shadow-DOM accept button and click it immediately
+            try {
+                const obs = new MutationObserver(() => {
+                    for (const el of document.querySelectorAll('*')) {
+                        if (!el.shadowRoot) continue;
+                        const btn = el.shadowRoot.querySelector(
+                            '.uc-accept-button, button[data-action-type="accept"]'
+                        );
+                        if (btn) { btn.click(); obs.disconnect(); return; }
+                    }
+                });
+                obs.observe(document.documentElement, { childList: true, subtree: true });
+            } catch (e) {}
+        });
+
         await page.setRequestInterception(true);
         page.on('request', req => {
             const reqUrl = req.url();
@@ -73,17 +113,74 @@ export const captureQuoteScreenshot = async (articleUrl, quoteText, attribution,
             }
         });
 
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        // networkidle2 ensures JS-rendered article bodies (React/Next.js sites) are
+        // fully painted before we search. If the site never settles (long-polling,
+        // websockets), the timeout is caught and we proceed with whatever is loaded.
+        await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 })
+            .catch(e => { if (!e.message.includes('timeout')) throw e; });
 
         if (process.env.NODE_ENV !== 'test') {
-            await new Promise(resolve => setTimeout(resolve, 8000));
+            // Resize to a normal viewport height for popup dismissal.
+            // Our 8000 px tall viewport pushes position:fixed consent dialogs
+            // to y ≈ 8000, putting them out of range for page.mouse.click().
+            // A normal height keeps them within reachable coordinates.
+            await page.setViewport({ width: 390, height: 900, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+
+            // Two-phase dismissal: catch overlays that appear immediately (2 s)
+            // and those that appear with a delay (another 6 s).
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            await dismissPopups(page);
+            await new Promise(resolve => setTimeout(resolve, 6000));
+            await dismissPopups(page);
+
+            // Restore tall viewport for full-page screenshot capture
+            await page.setViewport({ width: 390, height: 8000, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+            await new Promise(resolve => setTimeout(resolve, 500));
         }
 
         // Step 1: Find and highlight the quote
-        const findResult = await page.evaluate(findQuoteInDOM, quoteText);
+        let findResult = await page.evaluate(findQuoteInDOM, quoteText);
 
         if (process.env.DEBUG_HIGHLIGHT === 'true') {
             console.log("findResult:", findResult);
+        }
+
+        // Archive fallback chain: if the quote wasn't found (e.g. consent wall blocked
+        // the article body), retry via a series of fallbacks.
+        // Skip if we're already on an archive or vxtwitter URL.
+        const isAlreadyArchive = targetUrl.includes('web.archive.org')
+            || targetUrl.includes('archive.ph')
+            || targetUrl.includes('vxtwitter.com')
+            || targetUrl.includes('freedium.cfd');
+
+        if (!findResult.found && !isAlreadyArchive) {
+            const archiveFallbacks = [
+                // Medium-specific: freedium.cfd bypasses login/paywall
+                ...(/medium\.com\//.test(articleUrl)
+                    ? [{ name: 'freedium.cfd', url: `https://freedium.cfd/${articleUrl}` }]
+                    : []),
+                { name: 'archive.ph',      url: `https://archive.ph/newest/${articleUrl}` },
+                { name: 'Wayback Machine', url: `https://web.archive.org/web/2/${articleUrl}` },
+            ];
+
+            for (const fallback of archiveFallbacks) {
+                if (findResult.found) break;
+                try {
+                    console.warn(`[screenshot] Quote not found — retrying via ${fallback.name}`);
+                    await page.goto(fallback.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+                    if (process.env.NODE_ENV !== 'test') {
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                        await dismissPopups(page);
+                        await hideArchiveToolbars(page);
+                    }
+                    findResult = await page.evaluate(findQuoteInDOM, quoteText);
+                    if (process.env.DEBUG_HIGHLIGHT === 'true') {
+                        console.log(`findResult (${fallback.name}):`, findResult);
+                    }
+                } catch (e) {
+                    console.warn(`[screenshot] ${fallback.name} fallback failed: ${e.message}`);
+                }
+            }
         }
 
         // Step 2: Compute square padded clip region
@@ -95,26 +192,28 @@ export const captureQuoteScreenshot = async (articleUrl, quoteText, attribution,
                 const padding = 15;
                 const barHeight = 40;
 
+                // Width: highlight width + padding, capped at viewport
                 const rawWidth = foundResult.rect.width + (padding * 2);
-                const sideSize = Math.min(rawWidth, viewportWidth);
+                const size = Math.min(rawWidth, viewportWidth);  // size = clip width
 
                 let x = foundResult.rect.x - padding;
                 if (x < 0) x = 0;
-                if (x + sideSize > viewportWidth) x = viewportWidth - sideSize;
+                if (x + size > viewportWidth) x = viewportWidth - size;
 
-                const size = sideSize;
+                // Height: at least as tall as the width (square), but expands to
+                // fully contain taller quotes (multi-line, math-heavy, etc.)
+                const rawHeight = foundResult.rect.height + (padding * 2);
+                const height = Math.max(size, rawHeight);
 
-                const highlightCenterY = foundResult.rect.y + window.scrollY + (foundResult.rect.height / 2);
-                let y = highlightCenterY - (size / 2);
-
-
-
+                // Top-align to the start of the highlight so the quote beginning
+                // is always visible, even if the clip can't fit the full quote.
+                let y = foundResult.rect.y + window.scrollY - padding;
                 if (y < 0) y = 0;
 
-                const totalHeight = size + barHeight;
+                const totalHeight = height + barHeight;
                 if (y + totalHeight > pageHeight) y = pageHeight - totalHeight;
 
-                return { x, y, size, totalHeight, barHeight };
+                return { x, y, size, height, totalHeight, barHeight };
             } else {
                 // Fallback: If we couldn't find the text, try to clip to the article element
                 const article = document.querySelector('article[data-testid="tweet"]');
@@ -153,7 +252,7 @@ export const captureQuoteScreenshot = async (articleUrl, quoteText, attribution,
 
             Object.assign(bar.style, {
                 position: 'absolute',
-                top: `${clipBox.y + clipBox.size}px`,
+                top: `${clipBox.y + (clipBox.height || clipBox.size)}px`,
                 left: `${clipBox.x}px`,
                 width: `${clipBox.size}px`,
                 height: `${clipBox.barHeight}px`,
@@ -187,11 +286,201 @@ export const captureQuoteScreenshot = async (articleUrl, quoteText, attribution,
         console.error('Screenshot error:', error.stack);
         throw new Error('Failed to capture screenshot');
     } finally {
-        if (page) {
-            await page.close().catch(() => { });
-        }
+        if (page) await page.close().catch(() => {});
+        releaseBrowser(browser);
     }
 };
+
+/**
+ * Attempts to dismiss cookie banners, consent dialogs, and popups before screenshotting.
+ * Best-effort: errors are swallowed so they never block the screenshot.
+ */
+async function dismissPopups(page) {
+    try {
+        // Pass 1: click known dismiss/accept buttons
+        await page.evaluate(() => {
+            const knownSelectors = [
+                // OneTrust
+                '#onetrust-accept-btn-handler',
+                '#onetrust-reject-all-handler',
+                '.onetrust-close-btn-handler',
+                // Cookiebot
+                '#CybotCookiebotDialogBodyButtonAccept',
+                '#CybotCookiebotDialogBodyLevelButtonLevelOptinDeclineAll',
+                // Cookie Consent (Insites)
+                '.cc-accept', '.cc-dismiss', '.cc-btn.cc-accept',
+                // Quantcast
+                '.qc-cmp2-summary-buttons button',
+                // WP GDPR plugin
+                '#gdpr-cookie-consent-accept-button',
+                // Generic
+                '[data-testid="cookie-accept"]',
+                '[data-testid="GDPR-accept"]',
+                '[aria-label="Accept cookies"]',
+                '[aria-label="accept cookies"]',
+                '[aria-label="Close"]',
+                '#cookie-accept', '#accept-cookies',
+                '.cookie-accept', '.accept-cookies',
+                '#dismiss-button',
+                '#sp-cc-accept',
+            ];
+
+            for (const sel of knownSelectors) {
+                const el = document.querySelector(sel);
+                if (el && el.offsetParent !== null) { el.click(); return; }
+            }
+
+            // Text-match common button labels
+            const acceptPatterns = [
+                /^accept all(\s+cookies)?$/i,
+                /^accept(\s+&\s+close)?$/i,
+                /^agree$/i,
+                /^i agree$/i,
+                /^ok(,?\s*i agree)?$/i,
+                /^got it$/i,
+                /^allow all(\s+cookies)?$/i,
+                /^allow cookies$/i,
+                /^continue$/i,
+                /^close$/i,
+                /^dismiss$/i,
+            ];
+
+            const candidates = [...document.querySelectorAll('button, [role="button"], a.btn, a.button')];
+            for (const btn of candidates) {
+                const label = (btn.textContent || btn.getAttribute('aria-label') || '').trim();
+                if (acceptPatterns.some(p => p.test(label)) && btn.offsetParent !== null) {
+                    btn.click();
+                    return;
+                }
+            }
+        });
+
+        // Brief pause for dismiss animations
+        await new Promise(r => setTimeout(r, 800));
+
+        // Pass 2: Dismiss shadow DOM consent managers (e.g. Usercentrics on swissinfo.ch).
+        // Strategy A: call the Usercentrics public JS API if available.
+        // Strategy B: find the accept button inside the shadow root and fire a real
+        //             pointer event via page.mouse.click() (coordinates-based, bypasses
+        //             any JS event handling quirks with programmatic .click()).
+        try {
+            // Strategy A — Usercentrics public API
+            await page.evaluate(() => {
+                try { if (window.UC_UI) window.UC_UI.acceptAllConsents(); } catch (e) {}
+                try { if (window.__ucCmp) window.__ucCmp.acceptAllConsents(); } catch (e) {}
+            }).catch(() => {});
+
+            // Strategy B — direct .click() on the shadow DOM button.
+            // Calling .click() from inside page.evaluate() has full shadow root access
+            // (unlike page.mouse.click which uses viewport coordinates and can miss).
+            const shadowBtnCoords = await page.evaluate(() => {
+                const selectors = [
+                    '.uc-accept-button',
+                    'button[data-action-type="accept"]',
+                    'button[aria-label="Accept All"]',
+                ];
+                const hosts = [
+                    ...document.querySelectorAll('aside, #usercentrics-root, [data-nosnippet="1"], [id*="usercentrics"], [id*="consent-manager"]'),
+                ];
+                let scanned = 0;
+                for (const el of document.querySelectorAll('*')) {
+                    if (el.shadowRoot && !hosts.includes(el)) {
+                        hosts.push(el);
+                        if (++scanned >= 60) break;
+                    }
+                }
+                for (const host of hosts) {
+                    if (!host.shadowRoot) continue;
+                    for (const sel of selectors) {
+                        const btn = host.shadowRoot.querySelector(sel);
+                        if (btn) {
+                            // Programmatic click from within evaluate() reaches shadow DOM
+                            btn.click();
+                            const r = btn.getBoundingClientRect();
+                            return { x: Math.max(r.x + r.width / 2, 1), y: Math.max(r.y + r.height / 2, 1) };
+                        }
+                    }
+                }
+                return null;
+            });
+
+            if (shadowBtnCoords) {
+                console.log(`[dismissPopups] shadow-DOM consent button at (${shadowBtnCoords.x.toFixed(0)}, ${shadowBtnCoords.y.toFixed(0)})`);
+                // Also fire a coordinate click as a backup (some CMP handlers need real pointer events)
+                const navPromise = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
+                await page.mouse.click(shadowBtnCoords.x, shadowBtnCoords.y);
+                await navPromise;
+                // Wait for meaningful article body to be present (handles both full reload and SPA update)
+                await page.waitForFunction(
+                    () => (document.body.innerText || '').length > 2000,
+                    { timeout: 10000 }
+                ).catch(() => {});
+                await new Promise(r => setTimeout(r, 2000));
+            }
+        } catch (e) {
+            // non-fatal
+        }
+
+        await new Promise(r => setTimeout(r, 800));
+
+        // Pass 3: hide any remaining fixed/sticky overlays with high z-index
+        await page.evaluate(() => {
+            // Hide by known banner class/id patterns
+            const bannerSelectors = [
+                '[class*="cookie-banner"]', '[class*="cookiebanner"]',
+                '[class*="cookie-consent"]', '[class*="cookieconsent"]',
+                '[class*="cookie-notice"]', '[class*="gdpr-banner"]',
+                '[class*="consent-banner"]', '[class*="privacy-banner"]',
+                '[id*="cookie-banner"]', '[id*="cookiebanner"]',
+                '[id*="cookie-consent"]', '[id*="gdpr-banner"]',
+                '#onetrust-banner-sdk', '#onetrust-consent-sdk',
+                '.cc-window', '.cc-banner',
+                '#qc-cmp2-ui',
+            ];
+            for (const sel of bannerSelectors) {
+                document.querySelectorAll(sel).forEach(el => {
+                    el.style.setProperty('display', 'none', 'important');
+                });
+            }
+
+            // Also hide fixed/sticky elements with very high z-index that cover ≥10% of the viewport
+            const viewArea = window.innerWidth * window.innerHeight;
+            for (const el of document.querySelectorAll('*')) {
+                const style = window.getComputedStyle(el);
+                const zIndex = parseInt(style.zIndex) || 0;
+                if (zIndex > 999 && (style.position === 'fixed' || style.position === 'sticky')) {
+                    const rect = el.getBoundingClientRect();
+                    if ((rect.width * rect.height) / viewArea > 0.1) {
+                        el.style.setProperty('display', 'none', 'important');
+                    }
+                }
+            }
+        });
+    } catch (e) {
+        console.warn('dismissPopups (non-fatal):', e.message);
+    }
+}
+
+/**
+ * Hides fixed toolbars injected by archive services (Wayback Machine, archive.ph)
+ * so they don't appear in the screenshot or skew the clip coordinates.
+ */
+async function hideArchiveToolbars(page) {
+    await page.evaluate(() => {
+        const selectors = [
+            '#wm-ipp-base',               // Wayback Machine toolbar
+            '#wm-ipp',
+            '.wb-autocomplete-suggestions',
+            '#topbar',                    // archive.ph top bar
+            '#logo-bar',                  // archive.ph logo
+        ];
+        for (const sel of selectors) {
+            document.querySelectorAll(sel).forEach(el => {
+                el.style.setProperty('display', 'none', 'important');
+            });
+        }
+    }).catch(() => {});
+}
 
 /**
  * Formats the attribution bar text.

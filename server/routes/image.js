@@ -23,7 +23,7 @@ router.post('/upload', async (req, res) => {
         const base64Data = image.replace(/^data:image\/[a-zA-Z]*;base64,/, '');
         params.append('image', base64Data);
 
-        const response = await axios.post(`https://api.imgbb.com/1/upload?key=${apiKey}`, params, {
+        const response = await axios.post(`https://api.imgbb.com/1/upload?key=${apiKey}&expiration=2419200`, params, {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'
             }

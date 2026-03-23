@@ -1,25 +1,40 @@
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { createPool } from 'generic-pool';
 
 puppeteer.use(StealthPlugin());
 
-let browserInstance = null;
+const LAUNCH_OPTS = {
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null,
+    headless: true,
+    ignoreDefaultArgs: ["--enable-automation"],
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled', '--font-render-hinting=none'],
+};
 
 /**
- * Returns a shared Puppeteer browser instance (lazy singleton).
- * Reused across scraping and screenshot operations.
+ * Single-browser pool. min=max=1 — one warm instance always ready.
+ * testOnBorrow validates the browser is still connected before use;
+ * if it crashed, generic-pool destroys it and creates a fresh one automatically.
  */
-export const getBrowser = async () => {
-    if (!browserInstance || !browserInstance.connected) {
-        browserInstance = await puppeteer.launch({
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null,
-            headless: true,
-            ignoreDefaultArgs: ["--enable-automation"],
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled', '--font-render-hinting=none'],
-        });
+const browserPool = createPool(
+    {
+        create:   ()        => puppeteer.launch(LAUNCH_OPTS),
+        destroy:  (browser) => browser.close().catch(() => {}),
+        validate: (browser) => Promise.resolve(browser.connected),
+    },
+    {
+        min: 1,
+        max: 1,
+        testOnBorrow: true,
+        acquireTimeoutMillis: 30000,
+        idleTimeoutMillis: 600000,       // 10 min idle before teardown
+        evictionRunIntervalMillis: 60000,
     }
-    return browserInstance;
-};
+);
+
+export const acquireBrowser = () => browserPool.acquire();
+export const releaseBrowser = (browser) => browserPool.release(browser);
+export const shutdownPool = async () => { await browserPool.drain(); browserPool.clear(); };
 
 /**
  * Scrapes article text from a URL using Puppeteer.
@@ -48,9 +63,9 @@ export const scrapeArticle = async (url) => {
     }
 
     // 2. Default Puppeteer fallback
+    const browser = await acquireBrowser();
     let page;
     try {
-        const browser = await getBrowser();
         page = await browser.newPage();
 
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
@@ -85,8 +100,7 @@ export const scrapeArticle = async (url) => {
         console.error('Scraping error:', error.message);
         throw new Error('Failed to scrape the article.');
     } finally {
-        if (page) {
-            await page.close().catch(() => { });
-        }
+        if (page) await page.close().catch(() => {});
+        releaseBrowser(browser);
     }
 };

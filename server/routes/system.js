@@ -12,8 +12,10 @@ const checkMinimumConfig = async () => {
     const raindropId = process.env.RAINDROPIO_CLIENT_ID || await getSetting('RAINDROPIO_CLIENT_ID');
     const hasRaindropConfig = !!raindropId;
 
-    // As long as raindrop is connected, we consider the system "configured" enough to reach the dashboard.
-    // They can configure Twitter/Buffer later from the UI.
+    const bufferChannelsRaw = await getSetting('BUFFER_CHANNELS');
+    let bufferChannels = [];
+    try { bufferChannels = bufferChannelsRaw ? JSON.parse(bufferChannelsRaw) : []; } catch { /* keep [] */ }
+
     return {
         isConfigured: hasRaindropConfig,
         hasRaindropConfig,
@@ -22,6 +24,9 @@ const checkMinimumConfig = async () => {
         hasImgbbConfig: !!(process.env.IMGBB_API_KEY || await getSetting('IMGBB_API_KEY')),
         raindropClientId: raindropId || '',
         bufferProfileId: process.env.BUFFER_PROFILE_ID || await getSetting('BUFFER_PROFILE_ID') || '',
+        selectedTag: await getSetting('SELECTED_TAG') || '',
+        postingObjectives: await getSetting('POSTING_OBJECTIVES') || '',
+        bufferChannels,
     };
 };
 
@@ -43,7 +48,10 @@ router.post('/configure', async (req, res) => {
             veniceApiKey,
             bufferAccessToken,
             bufferProfileId,
-            imgbbApiKey
+            imgbbApiKey,
+            selectedTag,
+            postingObjectives,
+            bufferChannels,
         } = req.body;
 
         // Persist to SQLite & Update Memory concurrently if provided
@@ -60,8 +68,13 @@ router.post('/configure', async (req, res) => {
             saveConfig('VENICE_API_KEY', veniceApiKey),
             saveConfig('BUFFER_ACCESS_TOKEN', bufferAccessToken),
             saveConfig('BUFFER_PROFILE_ID', bufferProfileId),
-            saveConfig('IMGBB_API_KEY', imgbbApiKey)
+            saveConfig('IMGBB_API_KEY', imgbbApiKey),
         ];
+
+        // User workflow preferences — always overwrite (empty string is valid)
+        if (typeof selectedTag === 'string') promises.push(setSetting('SELECTED_TAG', selectedTag));
+        if (typeof postingObjectives === 'string') promises.push(setSetting('POSTING_OBJECTIVES', postingObjectives));
+        if (Array.isArray(bufferChannels)) promises.push(setSetting('BUFFER_CHANNELS', JSON.stringify(bufferChannels)));
 
         await Promise.all(promises);
 

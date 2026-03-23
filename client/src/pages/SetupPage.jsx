@@ -55,6 +55,17 @@ const SetupPage = () => {
                 if (systemStatus.raindropClientId) setRaindropClientId(systemStatus.raindropClientId);
                 if (systemStatus.bufferProfileId) setBufferProfileId(systemStatus.bufferProfileId);
 
+                // User preferences — server DB is source of truth; fall back to localStorage
+                const cached = loadSettings();
+                if (systemStatus.selectedTag) setSelectedTag(systemStatus.selectedTag);
+                else if (cached.selectedTag) setSelectedTag(cached.selectedTag);
+
+                if (systemStatus.postingObjectives) setObjectives(systemStatus.postingObjectives);
+                else if (cached.postingObjectives) setObjectives(cached.postingObjectives);
+
+                if (systemStatus.bufferChannels?.length) setBufferChannels(systemStatus.bufferChannels);
+                else if (cached.bufferChannels?.length) setBufferChannels(cached.bufferChannels);
+
             } catch (error) {
                 console.error('Initial load failed:', error);
             }
@@ -152,7 +163,10 @@ const SetupPage = () => {
                 veniceApiKey,
                 bufferAccessToken,
                 bufferProfileId,
-                imgbbApiKey: imgbbKey
+                imgbbApiKey: imgbbKey,
+                selectedTag,
+                postingObjectives: objectives,
+                bufferChannels,
             });
 
             // Save UI Preferences to LocalStorage

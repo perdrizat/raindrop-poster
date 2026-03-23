@@ -22,7 +22,7 @@ export const uploadImage = async (pngBuffer) => {
         params.append('image', base64Image);
 
         const response = await axios.post(
-            `https://api.imgbb.com/1/upload?key=${apiKey}&expiration=86400`,
+            `https://api.imgbb.com/1/upload?key=${apiKey}&expiration=2419200`,
             params
         );
 

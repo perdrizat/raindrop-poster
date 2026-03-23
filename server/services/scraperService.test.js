@@ -10,6 +10,7 @@ vi.mock('puppeteer-extra', () => {
     const mockBrowser = {
         newPage: vi.fn().mockResolvedValue(mockPage),
         close: vi.fn().mockResolvedValue(),
+        connected: true, // required for generic-pool's validate() to pass
     };
     return {
         default: {
@@ -30,12 +31,10 @@ describe('scraperService (Puppeteer)', () => {
         mockPage = puppeteer.launch.mock.results[0]?.value;
     });
 
-    it('should launch a browser, navigate, and extract text', async () => {
+    it('should navigate and extract text via puppeteer', async () => {
+        // The pool pre-warms one browser at init — launch is not called per request.
+        // Verify behaviour: correct text is returned from the mock page.
         const text = await scrapeArticle('https://example.com/article');
-
-        expect(puppeteer.launch).toHaveBeenCalledWith(
-            expect.objectContaining({ headless: true })
-        );
         expect(text).toBe('Article text content');
     });
 
@@ -69,7 +68,8 @@ describe('scraperService (Puppeteer)', () => {
 
         expect(globalThis.fetch).toHaveBeenCalledWith('https://api.vxtwitter.com/user1/status/1234567890');
         expect(text).toBe('This is a tweet text from vxtwitter.');
-        expect(puppeteer.launch).not.toHaveBeenCalled(); // Ensures Puppeteer is skipped
+        // Pool pre-warms at init; no new launch should happen during this request
+        expect(puppeteer.launch).not.toHaveBeenCalled();
     });
 
     it('should intercept twitter.com URLs and use api.vxtwitter.com', async () => {

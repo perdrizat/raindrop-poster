@@ -5,6 +5,7 @@ vi.mock('./scraperService.js', () => {
     const mockPage = {
         goto: vi.fn().mockResolvedValue(),
         evaluate: vi.fn(),
+        evaluateOnNewDocument: vi.fn().mockResolvedValue(),
         waitForNavigation: vi.fn().mockResolvedValue(),
         screenshot: vi.fn().mockResolvedValue(Buffer.from('fake-png')),
         setViewport: vi.fn().mockResolvedValue(),
@@ -18,7 +19,8 @@ vi.mock('./scraperService.js', () => {
         connected: true,
     };
     return {
-        getBrowser: vi.fn().mockResolvedValue(mockBrowser),
+        acquireBrowser: vi.fn().mockResolvedValue(mockBrowser),
+        releaseBrowser: vi.fn().mockResolvedValue(),
         __mockPage: mockPage,
         __mockBrowser: mockBrowser,
     };
@@ -52,7 +54,7 @@ describe('screenshotService', () => {
 
         expect(mockPage.goto).toHaveBeenCalledWith(
             'https://example.com/article',
-            expect.objectContaining({ waitUntil: 'domcontentloaded' })
+            expect.objectContaining({ waitUntil: 'networkidle2' })
         );
         expect(mockPage.setViewport).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -72,10 +74,9 @@ describe('screenshotService', () => {
 
     it('should intercept x.com URLs and redirect to vxtwitter.com to bypass login walls', async () => {
         mockPage.evaluate
-            .mockResolvedValueOnce(undefined) // The DOM cleaning script
-            .mockResolvedValueOnce({ found: false, rect: null }) // The find quote script
-            .mockResolvedValueOnce({ x: 0, y: 0, size: 700, totalHeight: 740, barHeight: 40 })
-            .mockResolvedValueOnce(undefined);
+            .mockResolvedValueOnce({ found: false, rect: null }) // findQuoteInDOM (vxtwitter — no Wayback fallback)
+            .mockResolvedValueOnce({ x: 0, y: 0, size: 700, totalHeight: 740, barHeight: 40 }) // clip calc
+            .mockResolvedValueOnce(undefined); // attribution bar injection
 
         const result = await captureQuoteScreenshot(
             'https://x.com/jack/status/2027129697092731343?s=20',
@@ -85,16 +86,18 @@ describe('screenshotService', () => {
 
         expect(mockPage.goto).toHaveBeenCalledWith(
             'https://vxtwitter.com/jack/status/2027129697092731343',
-            expect.objectContaining({ waitUntil: 'domcontentloaded' })
+            expect.objectContaining({ waitUntil: 'networkidle2' })
         );
         expect(result).toBeInstanceOf(Buffer);
     });
 
     it('should return buffer when quote not found (fallback to title area)', async () => {
         mockPage.evaluate
-            .mockResolvedValueOnce({ found: false, rect: null })
-            .mockResolvedValueOnce({ x: 0, y: 0, size: 700, totalHeight: 740, barHeight: 40 })
-            .mockResolvedValueOnce(undefined);
+            .mockResolvedValueOnce({ found: false, rect: null }) // findQuoteInDOM — live site, not found
+            .mockResolvedValueOnce({ found: false, rect: null }) // findQuoteInDOM — archive.ph fallback, not found
+            .mockResolvedValueOnce({ found: false, rect: null }) // findQuoteInDOM — Wayback fallback, not found
+            .mockResolvedValueOnce({ x: 0, y: 0, size: 700, totalHeight: 740, barHeight: 40 }) // clip calc
+            .mockResolvedValueOnce(undefined); // attribution bar injection
 
         const result = await captureQuoteScreenshot(
             'https://example.com/article',

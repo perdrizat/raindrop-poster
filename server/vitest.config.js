@@ -5,6 +5,7 @@ export default defineConfig({
         exclude: [
             ...configDefaults.exclude,
             '**/*.e2e.test.*',      // E2E tests requiring real APIs & Puppeteer
+            '**/*-e2e.test.*',
         ]
     }
 });

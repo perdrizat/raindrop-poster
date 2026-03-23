@@ -44,10 +44,10 @@ describe.skip('Screenshot E2E Integration', () => {
     it.each(testCases)('should navigate, highlight, inject attribution, and upload to ImgBB for $name', async ({ url, quote, attribution, expectedHighlightText }) => {
         let domState = {};
 
-        // 1. Spy on getBrowser to intercept the page object
-        const originalGetBrowser = scraperService.getBrowser;
-        vi.spyOn(scraperService, 'getBrowser').mockImplementation(async () => {
-            const browser = await originalGetBrowser();
+        // 1. Spy on acquireBrowser to intercept the page object
+        const originalAcquireBrowser = scraperService.acquireBrowser;
+        vi.spyOn(scraperService, 'acquireBrowser').mockImplementation(async () => {
+            const browser = await originalAcquireBrowser();
             const originalNewPage = browser.newPage.bind(browser);
 
             browser.newPage = async () => {
