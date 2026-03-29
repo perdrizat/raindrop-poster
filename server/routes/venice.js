@@ -178,7 +178,7 @@ router.post('/generate-image', async (req, res) => {
         console.log(`[Venice.ai] --> Image generation: "${prompt.slice(0, 80)}..."`);
 
         const response = await axios.post('https://api.venice.ai/api/v1/image/generate', {
-            model: 'hidream',
+            model: 'gpt-image-1-5',
             prompt,
             width: 1024,
             height: 1024,

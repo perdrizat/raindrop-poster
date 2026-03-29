@@ -203,7 +203,7 @@ describe('Venice API Routes', () => {
             expect(axios.post).toHaveBeenCalledWith(
                 'https://api.venice.ai/api/v1/image/generate',
                 expect.objectContaining({
-                    model: 'hidream',
+                    model: 'gpt-image-1-5',
                     prompt: expect.stringContaining('futuristic city'),
                     format: 'png',
                     return_binary: false,
