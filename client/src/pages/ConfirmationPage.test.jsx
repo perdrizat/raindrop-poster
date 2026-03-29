@@ -6,6 +6,7 @@ import ConfirmationPage from './ConfirmationPage';
 import { publishPost } from '../services/publishService';
 import { loadSettings } from '../services/settingsService';
 import { updateBookmarkTags } from '../services/raindropioService';
+import { resizeImage } from '../utils/imageUtils';
 
 vi.mock('../services/settingsService', () => ({
     loadSettings: vi.fn()
@@ -17,6 +18,10 @@ vi.mock('../services/publishService', () => ({
 
 vi.mock('../services/raindropioService', () => ({
     updateBookmarkTags: vi.fn()
+}));
+
+vi.mock('../utils/imageUtils', () => ({
+    resizeImage: vi.fn((dataUrl) => Promise.resolve(dataUrl))
 }));
 
 describe('ConfirmationPage', () => {
@@ -38,10 +43,21 @@ describe('ConfirmationPage', () => {
         loadSettings.mockReturnValue({ publishDestination: 'buffer', bufferChannels: ['linkedin-1'], selectedTag: 'to-tweet' });
         updateBookmarkTags.mockResolvedValue(true);
 
-        // Mock the screenshot fetch
-        globalThis.fetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: async () => ({ imageData: 'data:image/png;base64,fakescreenshot' }),
+        // Mock fetch for screenshot and AI image generation
+        globalThis.fetch = vi.fn().mockImplementation((url) => {
+            if (url === '/api/screenshot') {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({ imageData: 'data:image/png;base64,fakescreenshot' }),
+                });
+            }
+            if (url === '/api/venice/generate-image') {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({ imageData: 'data:image/png;base64,fakeaiimage' }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: async () => ({}) });
         });
     });
 
@@ -62,7 +78,8 @@ describe('ConfirmationPage', () => {
 
     it('shows screenshot loading state initially', () => {
         render(<ConfirmationPage {...defaultProps} />);
-        expect(screen.getByText(/Capturing screenshot/i)).toBeInTheDocument();
+        const screenshotCard = screen.getByTestId('image-option-screenshot');
+        expect(screenshotCard.textContent).toMatch(/Loading/i);
     });
 
     it('calls publishPost when the post button is clicked', async () => {
@@ -72,7 +89,7 @@ describe('ConfirmationPage', () => {
 
         // Wait for screenshot to load
         await waitFor(() => {
-            expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
+            expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
         });
 
         const button = await screen.findByRole('button', { name: /^Drafts$/i });
@@ -100,7 +117,7 @@ describe('ConfirmationPage', () => {
         render(<ConfirmationPage {...defaultProps} />);
 
         await waitFor(() => {
-            expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
+            expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
         });
 
         const button = await screen.findByRole('button', { name: /^Drafts$/i });
@@ -124,7 +141,7 @@ describe('ConfirmationPage', () => {
         render(<ConfirmationPage {...defaultProps} />);
 
         await waitFor(() => {
-            expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
+            expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
         });
 
         const button = await screen.findByRole('button', { name: /^Drafts$/i });
@@ -139,7 +156,7 @@ describe('ConfirmationPage', () => {
         render(<ConfirmationPage {...defaultProps} article={{ ...defaultProps.article, highlight: 'Initial quote' }} />);
 
         await waitFor(() => {
-            expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
+            expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
         });
 
         expect(globalThis.fetch).toHaveBeenCalledWith('/api/screenshot', expect.objectContaining({
@@ -175,7 +192,8 @@ describe('ConfirmationPage', () => {
         render(<ConfirmationPage {...defaultProps} />);
 
         await waitFor(() => {
-            expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
+            const screenshotCard = screen.getByTestId('image-option-screenshot');
+            expect(screenshotCard.textContent).not.toMatch(/Loading/i);
         });
 
         const fileInput = screen.getByLabelText(/Upload Custom Image/i);
@@ -184,13 +202,13 @@ describe('ConfirmationPage', () => {
 
         // Should NOT call any upload endpoint — image stays local as base64
         await waitFor(() => {
-            const img = screen.getByAltText('Quote screenshot');
+            const img = screen.getByAltText('Custom');
             expect(img.src).toContain('data:image/png;base64,customupload');
         });
 
-        // Verify no upload calls were made (only the initial screenshot call)
+        // Verify no upload calls were made (only screenshot + AI generation)
         const uploadCalls = globalThis.fetch.mock.calls.filter(
-            ([url]) => url !== '/api/screenshot'
+            ([url]) => url !== '/api/screenshot' && url !== '/api/venice/generate-image'
         );
         expect(uploadCalls).toHaveLength(0);
 
@@ -201,7 +219,7 @@ describe('ConfirmationPage', () => {
         render(<ConfirmationPage {...defaultProps} />);
 
         await waitFor(() => {
-            expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
+            expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
         });
 
         expect(screen.getByRole('button', { name: /^Now$/i })).toBeInTheDocument();
@@ -223,16 +241,21 @@ describe('ConfirmationPage', () => {
             vi.clearAllMocks();
             loadSettings.mockReturnValue({ publishDestination: 'buffer', bufferChannels: ['ch1'], selectedTag: 'to-tweet' });
             updateBookmarkTags.mockResolvedValue(true);
-            globalThis.fetch = vi.fn().mockResolvedValue({
-                ok: true,
-                json: async () => ({ imageData: 'data:image/png;base64,fakescreenshot' }),
+            globalThis.fetch = vi.fn().mockImplementation((url) => {
+                if (url === '/api/screenshot') {
+                    return Promise.resolve({ ok: true, json: async () => ({ imageData: 'data:image/png;base64,fakescreenshot' }) });
+                }
+                if (url === '/api/venice/generate-image') {
+                    return Promise.resolve({ ok: true, json: async () => ({ imageData: 'data:image/png;base64,fakeaiimage' }) });
+                }
+                return Promise.resolve({ ok: true, json: async () => ({}) });
             });
             publishPost.mockResolvedValueOnce({ success: true, url: 'https://buffer.com/update/1' });
 
             const { unmount } = render(<ConfirmationPage {...defaultProps} />);
 
             await waitFor(() => {
-                expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
+                expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
             });
 
             fireEvent.click(screen.getByRole('button', { name: label }));
@@ -264,7 +287,7 @@ describe('ConfirmationPage', () => {
         render(<ConfirmationPage {...defaultProps} />);
 
         await waitFor(() => {
-            expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
+            expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
         });
 
         // Trigger upload via the file input (same code path as paste)
@@ -274,10 +297,306 @@ describe('ConfirmationPage', () => {
 
         // Spinner should appear then disappear — the old bug left it spinning forever
         await waitFor(() => {
-            expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
+            expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
         });
         expect(screen.getByText(/Failed to read file/i)).toBeInTheDocument();
 
         globalThis.FileReader = origFileReader;
+    });
+
+    // --- Image Selection 2x2 Grid Tests ---
+
+    it('renders four image option cards in a 2x2 grid', async () => {
+        render(<ConfirmationPage {...defaultProps} article={{ ...defaultProps.article, cover: 'https://example.com/cover.jpg' }} />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('image-option-cover')).toBeInTheDocument();
+            expect(screen.getByTestId('image-option-screenshot')).toBeInTheDocument();
+            expect(screen.getByTestId('image-option-ai')).toBeInTheDocument();
+            expect(screen.getByTestId('image-option-custom')).toBeInTheDocument();
+        });
+    });
+
+    it('shows cover image when article.cover is available', async () => {
+        render(<ConfirmationPage {...defaultProps} article={{ ...defaultProps.article, cover: 'https://example.com/cover.jpg' }} />);
+
+        await waitFor(() => {
+            const coverImg = screen.getByAltText('Cover');
+            expect(coverImg.src).toBe('https://example.com/cover.jpg');
+        });
+    });
+
+    it('shows "No cover available" when article.cover is missing', async () => {
+        render(<ConfirmationPage {...defaultProps} />);
+
+        await waitFor(() => {
+            expect(screen.getByText(/No cover available/i)).toBeInTheDocument();
+        });
+    });
+
+    it('selects screenshot option by default and shows selected ring', async () => {
+        render(<ConfirmationPage {...defaultProps} article={{ ...defaultProps.article, cover: 'https://example.com/cover.jpg' }} />);
+
+        await waitFor(() => {
+            const screenshotCard = screen.getByTestId('image-option-screenshot');
+            expect(screenshotCard.className).toMatch(/ring-blue/);
+        });
+    });
+
+    it('clicking AI image card selects it', async () => {
+        render(<ConfirmationPage {...defaultProps} article={{ ...defaultProps.article, cover: 'https://example.com/cover.jpg' }} />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('image-option-ai')).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByTestId('image-option-ai'));
+
+        expect(screen.getByTestId('image-option-ai').className).toMatch(/ring-blue/);
+        expect(screen.getByTestId('image-option-screenshot').className).not.toMatch(/ring-blue/);
+    });
+
+    it('publishes with coverUrl when cover option is selected', async () => {
+        publishPost.mockResolvedValueOnce({ success: true, url: 'https://buffer.com/1' });
+
+        render(<ConfirmationPage {...defaultProps} article={{ ...defaultProps.article, cover: 'https://example.com/cover.jpg' }} />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('image-option-cover')).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByTestId('image-option-cover'));
+        fireEvent.click(screen.getByRole('button', { name: /^Drafts$/i }));
+
+        await waitFor(() => {
+            expect(publishPost).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.any(String),
+                { imageData: null, coverUrl: 'https://example.com/cover.jpg' },
+                'buffer',
+                ['linkedin-1'],
+                'draft'
+            );
+        });
+    });
+
+    it('publishes with AI imageData when AI option is selected', async () => {
+        publishPost.mockResolvedValueOnce({ success: true, url: 'https://buffer.com/1' });
+
+        render(<ConfirmationPage {...defaultProps} />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('image-option-ai')).toBeInTheDocument();
+        });
+
+        // Wait for AI image to load
+        await waitFor(() => {
+            const aiImg = screen.getByAltText('AI Generated');
+            expect(aiImg).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByTestId('image-option-ai'));
+        fireEvent.click(screen.getByRole('button', { name: /^Drafts$/i }));
+
+        await waitFor(() => {
+            expect(publishPost).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.any(String),
+                { imageData: 'data:image/png;base64,fakeaiimage', coverUrl: null },
+                'buffer',
+                ['linkedin-1'],
+                'draft'
+            );
+        });
+    });
+
+    it('publishes with custom imageData when custom image is uploaded', async () => {
+        publishPost.mockResolvedValueOnce({ success: true, url: 'https://buffer.com/1' });
+
+        const origFileReader = globalThis.FileReader;
+        globalThis.FileReader = class {
+            readAsDataURL() {
+                setTimeout(() => this.onload?.(), 0);
+            }
+            result = 'data:image/png;base64,customupload';
+        };
+
+        render(<ConfirmationPage {...defaultProps} />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('image-option-custom')).toBeInTheDocument();
+        });
+
+        const fileInput = screen.getByLabelText(/Upload Custom Image/i);
+        const file = new File(['img'], 'test.png', { type: 'image/png' });
+        fireEvent.change(fileInput, { target: { files: [file] } });
+
+        await waitFor(() => {
+            const customImg = screen.getByAltText('Custom');
+            expect(customImg).toBeInTheDocument();
+        });
+
+        // Custom should be auto-selected
+        expect(screen.getByTestId('image-option-custom').className).toMatch(/ring-blue/);
+
+        fireEvent.click(screen.getByRole('button', { name: /^Drafts$/i }));
+
+        await waitFor(() => {
+            expect(publishPost).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.any(String),
+                { imageData: 'data:image/png;base64,customupload', coverUrl: null },
+                'buffer',
+                ['linkedin-1'],
+                'draft'
+            );
+        });
+
+        globalThis.FileReader = origFileReader;
+    });
+
+    it('calls resizeImage when uploading a custom image', async () => {
+        const origFileReader = globalThis.FileReader;
+        globalThis.FileReader = class {
+            readAsDataURL() {
+                setTimeout(() => this.onload?.(), 0);
+            }
+            result = 'data:image/png;base64,largeimage';
+        };
+
+        render(<ConfirmationPage {...defaultProps} />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('image-option-custom')).toBeInTheDocument();
+        });
+
+        const fileInput = screen.getByLabelText(/Upload Custom Image/i);
+        const file = new File(['img'], 'big.png', { type: 'image/png' });
+        fireEvent.change(fileInput, { target: { files: [file] } });
+
+        await waitFor(() => {
+            expect(resizeImage).toHaveBeenCalledWith('data:image/png;base64,largeimage');
+        });
+
+        globalThis.FileReader = origFileReader;
+    });
+
+    it('shows error and retry on AI card when AI generation fails', async () => {
+        globalThis.fetch = vi.fn().mockImplementation((url) => {
+            if (url === '/api/screenshot') {
+                return Promise.resolve({ ok: true, json: async () => ({ imageData: 'data:image/png;base64,ss' }) });
+            }
+            if (url === '/api/venice/generate-image') {
+                return Promise.resolve({ ok: false, json: async () => ({ error: 'AI failed' }) });
+            }
+            return Promise.resolve({ ok: true, json: async () => ({}) });
+        });
+
+        render(<ConfirmationPage {...defaultProps} />);
+
+        await waitFor(() => {
+            const aiCard = screen.getByTestId('image-option-ai');
+            expect(aiCard.textContent).toMatch(/could not generate/i);
+        });
+
+        // Retry button should be present
+        expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+    });
+
+    it('all four cards have square aspect ratio (no layout shift)', () => {
+        render(<ConfirmationPage {...defaultProps} />);
+
+        const cards = [
+            screen.getByTestId('image-option-cover'),
+            screen.getByTestId('image-option-screenshot'),
+            screen.getByTestId('image-option-ai'),
+            screen.getByTestId('image-option-custom'),
+        ];
+
+        cards.forEach(card => {
+            expect(card.className).toMatch(/aspect-square/);
+        });
+    });
+
+    it('custom card shows "Paste or upload" placeholder initially', () => {
+        render(<ConfirmationPage {...defaultProps} />);
+
+        const customCard = screen.getByTestId('image-option-custom');
+        expect(customCard.textContent).toMatch(/Paste or upload/i);
+    });
+
+    it('pasting an image populates the Custom card, not the screenshot card', async () => {
+        render(<ConfirmationPage {...defaultProps} />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
+        });
+
+        // Simulate paste event with an image file
+        const file = new File(['img'], 'pasted.png', { type: 'image/png' });
+        const pasteEvent = new Event('paste', { bubbles: true });
+        Object.defineProperty(pasteEvent, 'clipboardData', {
+            value: {
+                items: [{
+                    type: 'image/png',
+                    getAsFile: () => file,
+                }],
+            },
+        });
+
+        // Mock FileReader
+        const origFileReader = globalThis.FileReader;
+        globalThis.FileReader = class {
+            readAsDataURL() {
+                setTimeout(() => this.onload?.(), 0);
+            }
+            result = 'data:image/png;base64,pastedimage';
+        };
+
+        window.dispatchEvent(pasteEvent);
+
+        await waitFor(() => {
+            const customImg = screen.getByAltText('Custom');
+            expect(customImg.src).toContain('data:image/png;base64,pastedimage');
+        });
+
+        // Custom should be auto-selected
+        expect(screen.getByTestId('image-option-custom').className).toMatch(/ring-blue/);
+
+        globalThis.FileReader = origFileReader;
+    });
+
+    it('shows error on screenshot card when screenshot fails; other cards still work', async () => {
+        globalThis.fetch = vi.fn().mockImplementation((url) => {
+            if (url === '/api/screenshot') {
+                return Promise.resolve({ ok: false, json: async () => ({ error: 'Screenshot failed' }) });
+            }
+            if (url === '/api/venice/generate-image') {
+                return Promise.resolve({ ok: true, json: async () => ({ imageData: 'data:image/png;base64,aiok' }) });
+            }
+            return Promise.resolve({ ok: true, json: async () => ({}) });
+        });
+
+        render(<ConfirmationPage {...defaultProps} article={{ ...defaultProps.article, cover: 'https://example.com/cover.jpg' }} />);
+
+        // Screenshot card shows error
+        await waitFor(() => {
+            const ssCard = screen.getByTestId('image-option-screenshot');
+            expect(ssCard.textContent).toMatch(/could not capture/i);
+        });
+
+        // AI card still loads successfully
+        await waitFor(() => {
+            const aiImg = screen.getByAltText('AI Generated');
+            expect(aiImg).toBeInTheDocument();
+        });
+
+        // Cover card still shows its image
+        const coverImg = screen.getByAltText('Cover');
+        expect(coverImg.src).toBe('https://example.com/cover.jpg');
+
+        // Cover card is still selectable
+        fireEvent.click(screen.getByTestId('image-option-cover'));
+        expect(screen.getByTestId('image-option-cover').className).toMatch(/ring-blue/);
     });
 });

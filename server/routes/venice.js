@@ -162,4 +162,49 @@ ${articleText.substring(0, 100).replace(/\\n/g, ' ')}... [TRUNCATED ${articleTex
     }
 });
 
+router.post('/generate-image', async (req, res) => {
+    try {
+        const apiKey = process.env.VENICE_API_KEY || await getSetting('VENICE_API_KEY');
+        if (!apiKey) {
+            return res.status(401).json({ error: 'System VENICE_API_KEY is not configured' });
+        }
+
+        const { prompt } = req.body;
+
+        if (!prompt) {
+            return res.status(400).json({ error: 'Image prompt is required' });
+        }
+
+        console.log(`[Venice.ai] --> Image generation: "${prompt.slice(0, 80)}..."`);
+
+        const response = await axios.post('https://api.venice.ai/api/v1/image/generate', {
+            model: 'hidream',
+            prompt,
+            width: 1024,
+            height: 1024,
+            format: 'png',
+            return_binary: false,
+            hide_watermark: true,
+            safe_mode: false,
+        }, {
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const images = response.data?.images;
+        const b64 = Array.isArray(images) ? images[0] : null;
+        if (!b64) {
+            throw new Error('No image data in Venice response');
+        }
+
+        console.log(`[Venice.ai] <-- Image generated (${Math.round(b64.length / 1024)}KB base64)`);
+        res.json({ imageData: `data:image/png;base64,${b64}` });
+    } catch (error) {
+        console.error('Venice Image Generation Error:', error.response?.data || error.message);
+        res.status(502).json({ error: 'Failed to generate image with Venice AI' });
+    }
+});
+
 export default router;

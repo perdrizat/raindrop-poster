@@ -156,6 +156,93 @@ describe('Venice API Routes', () => {
         });
     });
 
+    describe('POST /api/venice/generate-image', () => {
+        it('should return 401 if VENICE_API_KEY is not configured', async () => {
+            const res = await request(app).post('/api/venice/generate-image').send({
+                prompt: 'A beautiful sunset'
+            });
+            expect(res.status).toBe(401);
+            expect(res.body.error).toMatch(/VENICE_API_KEY.*not configured/);
+        });
+
+        it('should return 400 if prompt is missing', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            const res = await request(app).post('/api/venice/generate-image').send({});
+            expect(res.status).toBe(400);
+            expect(res.body.error).toMatch(/prompt.*required/i);
+        });
+
+        it('should return base64 imageData on success', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+
+            axios.post.mockResolvedValueOnce({
+                data: {
+                    images: ['iVBORw0KGgoAAAANSUhEUg==']
+                }
+            });
+
+            const res = await request(app).post('/api/venice/generate-image').send({
+                prompt: 'An editorial illustration about tokenized gold'
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body.imageData).toBe('data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==');
+        });
+
+        it('should call Venice image API with correct endpoint and payload', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+
+            axios.post.mockResolvedValueOnce({
+                data: { images: ['abc123'] }
+            });
+
+            await request(app).post('/api/venice/generate-image').send({
+                prompt: 'A futuristic city'
+            });
+
+            expect(axios.post).toHaveBeenCalledWith(
+                'https://api.venice.ai/api/v1/image/generate',
+                expect.objectContaining({
+                    model: 'hidream',
+                    prompt: expect.stringContaining('futuristic city'),
+                    format: 'png',
+                    return_binary: false,
+                }),
+                expect.objectContaining({
+                    headers: expect.objectContaining({
+                        Authorization: 'Bearer mock-key',
+                    })
+                })
+            );
+        });
+
+        it('should return 502 when Venice image API errors', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post.mockRejectedValueOnce(new Error('Venice image API down'));
+
+            const res = await request(app).post('/api/venice/generate-image').send({
+                prompt: 'Something'
+            });
+
+            expect(res.status).toBe(502);
+            expect(res.body.error).toMatch(/Failed to generate/i);
+        });
+
+        it('should handle unexpected response shape gracefully', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post.mockResolvedValueOnce({
+                data: { images: [] }
+            });
+
+            const res = await request(app).post('/api/venice/generate-image').send({
+                prompt: 'Something'
+            });
+
+            expect(res.status).toBe(502);
+            expect(res.body.error).toMatch(/Failed to generate/i);
+        });
+    });
+
     describe('GET /api/venice/test (error handling)', () => {
         it('should return 502 when Venice API connection fails', async () => {
             process.env.VENICE_API_KEY = 'mock-key';
