@@ -49,22 +49,46 @@ describe('Raindrop API Routes', () => {
             expect(res.body.error).toMatch(/expired|reconnect/i);
         });
 
-        it('should return success and username if token is valid', async () => {
-            axios.get.mockResolvedValueOnce({
-                data: {
-                    user: { fullName: 'Test User' }
-                }
-            });
+        it('should return success, username, and bookmark count if token is valid', async () => {
+            axios.get
+                .mockResolvedValueOnce({
+                    data: { user: { fullName: 'Test User' } }
+                })
+                .mockResolvedValueOnce({
+                    data: { items: [{ _id: 0, count: 150 }, { _id: 1, count: 30 }] }
+                });
 
             const res = await request(app)
                 .get('/api/raindropio/test')
                 .set('Authorization', 'Bearer mock-rd-token');
 
             expect(res.status).toBe(200);
-            expect(res.body).toEqual({ success: true, user: 'Test User' });
+            expect(res.body.success).toBe(true);
+            expect(res.body.user).toBe('Test User');
+            expect(res.body.bookmarkCount).toBe(180);
             expect(axios.get).toHaveBeenCalledWith('https://api.raindrop.io/rest/v1/user', {
                 headers: { Authorization: 'Bearer mock-rd-token' }
             });
+            expect(axios.get).toHaveBeenCalledWith('https://api.raindrop.io/rest/v1/user/stats', {
+                headers: { Authorization: 'Bearer mock-rd-token' }
+            });
+        });
+
+        it('should still succeed if stats call fails (graceful degradation)', async () => {
+            axios.get
+                .mockResolvedValueOnce({
+                    data: { user: { fullName: 'Test User' } }
+                })
+                .mockRejectedValueOnce(new Error('stats endpoint down'));
+
+            const res = await request(app)
+                .get('/api/raindropio/test')
+                .set('Authorization', 'Bearer mock-rd-token');
+
+            expect(res.status).toBe(200);
+            expect(res.body.success).toBe(true);
+            expect(res.body.user).toBe('Test User');
+            expect(res.body.bookmarkCount).toBeUndefined();
         });
     });
 

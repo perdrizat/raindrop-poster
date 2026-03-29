@@ -6,13 +6,8 @@ vi.mock('../services/screenshotService.js', () => ({
     captureQuoteScreenshot: vi.fn(),
 }));
 
-vi.mock('../services/imageHostService.js', () => ({
-    uploadImage: vi.fn(),
-}));
-
 import screenshotRoutes from './screenshot.js';
 import { captureQuoteScreenshot } from '../services/screenshotService.js';
-import { uploadImage } from '../services/imageHostService.js';
 
 const app = express();
 app.use(express.json());
@@ -32,9 +27,8 @@ describe('POST /api/screenshot', () => {
         expect(res.body.error).toMatch(/url is required/i);
     });
 
-    it('should capture screenshot, upload, and return URL', async () => {
+    it('should capture screenshot and return base64 data URL (no upload)', async () => {
         captureQuoteScreenshot.mockResolvedValueOnce(Buffer.from('fake-png'));
-        uploadImage.mockResolvedValueOnce({ url: 'https://i.ibb.co/abc/shot.png' });
 
         const res = await request(app)
             .post('/api/screenshot')
@@ -46,7 +40,9 @@ describe('POST /api/screenshot', () => {
             });
 
         expect(res.status).toBe(200);
-        expect(res.body.screenshotUrl).toBe('https://i.ibb.co/abc/shot.png');
+        // Should return a base64 data URL, not an uploaded URL
+        expect(res.body.imageData).toMatch(/^data:image\/png;base64,/);
+        expect(res.body.screenshotUrl).toBeUndefined();
         expect(captureQuoteScreenshot).toHaveBeenCalledWith(
             'https://example.com/article',
             'Important quote',
@@ -67,9 +63,8 @@ describe('POST /api/screenshot', () => {
             });
 
         expect(res.status).toBe(200);
-        expect(res.body.screenshotUrl).toBe('https://example.com/cover.jpg');
-        // Should NOT have called uploadImage since it's already a URL
-        expect(uploadImage).not.toHaveBeenCalled();
+        // Cover URLs are already public — return as coverUrl
+        expect(res.body.coverUrl).toBe('https://example.com/cover.jpg');
     });
 
     it('should handle screenshot service errors', async () => {
@@ -86,18 +81,81 @@ describe('POST /api/screenshot', () => {
         expect(res.body.error).toMatch(/failed to capture/i);
     });
 
-    it('should handle upload errors', async () => {
-        captureQuoteScreenshot.mockResolvedValueOnce(Buffer.from('fake-png'));
-        uploadImage.mockRejectedValueOnce(new Error('Upload failed'));
+    it('should extract domain from URL and strip www prefix', async () => {
+        captureQuoteScreenshot.mockResolvedValueOnce(Buffer.from('png'));
 
-        const res = await request(app)
+        await request(app)
+            .post('/api/screenshot')
+            .send({ url: 'https://www.reuters.com/article/123' });
+
+        expect(captureQuoteScreenshot).toHaveBeenCalledWith(
+            'https://www.reuters.com/article/123',
+            null,
+            expect.objectContaining({ domain: 'reuters.com' }),
+            undefined
+        );
+    });
+
+    it('should use explicit domain override when provided', async () => {
+        captureQuoteScreenshot.mockResolvedValueOnce(Buffer.from('png'));
+
+        await request(app)
+            .post('/api/screenshot')
+            .send({ url: 'https://example.com/article', domain: 'custom-source.org' });
+
+        expect(captureQuoteScreenshot).toHaveBeenCalledWith(
+            'https://example.com/article',
+            null,
+            expect.objectContaining({ domain: 'custom-source.org' }),
+            undefined
+        );
+    });
+
+    it('should pass null for quoteText when not provided', async () => {
+        captureQuoteScreenshot.mockResolvedValueOnce(Buffer.from('png'));
+
+        await request(app)
+            .post('/api/screenshot')
+            .send({ url: 'https://example.com' });
+
+        expect(captureQuoteScreenshot).toHaveBeenCalledWith(
+            'https://example.com',
+            null,
+            expect.objectContaining({ author: null, date: null }),
+            undefined
+        );
+    });
+
+    it('should pass coverImageUrl to captureQuoteScreenshot', async () => {
+        captureQuoteScreenshot.mockResolvedValueOnce('https://cdn.com/cover.jpg');
+
+        await request(app)
             .post('/api/screenshot')
             .send({
-                url: 'https://example.com/article',
-                quoteText: 'Some quote',
+                url: 'https://example.com',
+                coverImageUrl: 'https://cdn.com/cover.jpg'
             });
 
-        expect(res.status).toBe(500);
-        expect(res.body.error).toMatch(/failed/i);
+        expect(captureQuoteScreenshot).toHaveBeenCalledWith(
+            'https://example.com',
+            null,
+            expect.any(Object),
+            'https://cdn.com/cover.jpg'
+        );
+    });
+
+    it('should handle invalid URL gracefully for domain extraction', async () => {
+        captureQuoteScreenshot.mockResolvedValueOnce(Buffer.from('png'));
+
+        await request(app)
+            .post('/api/screenshot')
+            .send({ url: 'not-a-valid-url' });
+
+        expect(captureQuoteScreenshot).toHaveBeenCalledWith(
+            'not-a-valid-url',
+            null,
+            expect.objectContaining({ domain: '' }),
+            undefined
+        );
     });
 });

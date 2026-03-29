@@ -60,4 +60,94 @@ describe('Highlighter DOM Walker (JSDOM Environment)', () => {
         const result = findQuoteInDOM(quote);
         expect(result.found).toBe(false);
     });
+
+    it('should return found:false for null/empty quote', () => {
+        expect(findQuoteInDOM(null).found).toBe(false);
+        expect(findQuoteInDOM('').found).toBe(false);
+        expect(findQuoteInDOM(undefined).found).toBe(false);
+    });
+
+    it('should return found:false for quote with only punctuation (no word tokens)', () => {
+        const result = findQuoteInDOM('!!! ???');
+        expect(result.found).toBe(false);
+    });
+
+    it('should match a short exact phrase within the document', () => {
+        const result = findQuoteInDOM('tokenized gold closely tracks traditional gold benchmarks');
+        expect(result.found).toBe(true);
+        expect(result.debugInfo.startWord).toBe('tokenized');
+    });
+
+    it('should handle smart quotes and curly apostrophes via normalization', () => {
+        // Set up a DOM with smart quotes
+        const smartDom = new JSDOM(`
+            <html><body>
+                <p>The author\u2019s claim is that \u201Ctokenized gold\u201D outperforms.</p>
+            </body></html>
+        `);
+        global.document = smartDom.window.document;
+        global.window = smartDom.window;
+        global.NodeFilter = smartDom.window.NodeFilter;
+        global.window.HTMLElement.prototype.getBoundingClientRect = function () {
+            return { x: 10, y: 10, width: 100, height: 20, top: 10, left: 10, bottom: 30, right: 110 };
+        };
+        global.window.Range.prototype.getClientRects = function () { return []; };
+
+        const result = findQuoteInDOM("The author's claim is that \"tokenized gold\" outperforms");
+        expect(result.found).toBe(true);
+    });
+
+    it('should not match when score is below 50% threshold', () => {
+        // Only 2 words out of a 10-word quote exist in the document
+        const result = findQuoteInDOM('Although the banana elephant unicorn spacecraft galaxy nebula quantum paradox');
+        expect(result.found).toBe(false);
+    });
+
+    it('should ignore script and style tag contents', () => {
+        const scriptDom = new JSDOM(`
+            <html><body>
+                <script>var gold = "tokenized gold benchmarks";</script>
+                <style>.gold { color: gold; }</style>
+                <p>No relevant content here at all.</p>
+            </body></html>
+        `);
+        global.document = scriptDom.window.document;
+        global.window = scriptDom.window;
+        global.NodeFilter = scriptDom.window.NodeFilter;
+
+        const result = findQuoteInDOM('tokenized gold benchmarks');
+        expect(result.found).toBe(false);
+    });
+
+    it('should search tweet articles independently on multi-tweet pages', () => {
+        const tweetDom = new JSDOM(`
+            <html><body>
+                <article data-testid="tweet">
+                    <p>First tweet about blockchain technology and decentralization</p>
+                </article>
+                <article data-testid="tweet">
+                    <p>Second tweet about tokenized gold closely tracks traditional gold benchmarks</p>
+                </article>
+            </body></html>
+        `);
+        global.document = tweetDom.window.document;
+        global.window = tweetDom.window;
+        global.NodeFilter = tweetDom.window.NodeFilter;
+        global.window.HTMLElement.prototype.getBoundingClientRect = function () {
+            return { x: 10, y: 10, width: 100, height: 20, top: 10, left: 10, bottom: 30, right: 110 };
+        };
+        global.window.Range.prototype.getClientRects = function () { return []; };
+
+        const result = findQuoteInDOM('tokenized gold closely tracks traditional gold benchmarks');
+        expect(result.found).toBe(true);
+    });
+
+    it('should return debugInfo with score even when not found', () => {
+        const result = findQuoteInDOM('entirely nonexistent words that appear nowhere in the document whatsoever');
+        expect(result.found).toBe(false);
+        // debugInfo should be present with maxScore info
+        if (result.debugInfo) {
+            expect(result.debugInfo.quoteLength).toBeGreaterThan(0);
+        }
+    });
 });

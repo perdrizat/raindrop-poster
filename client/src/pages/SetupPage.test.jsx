@@ -35,9 +35,8 @@ beforeAll(() => {
                     json: () => Promise.resolve({
                         raindropio: mockRaindropConnection ? true : false,
                         venice: true,
-                        twitter: false,
                         buffer: true,
-                        imgbb: true
+                        r2: true
                     })
                 });
             }
@@ -49,14 +48,14 @@ beforeAll(() => {
                         hasRaindropConfig: true,
                         hasVeniceConfig: true,
                         hasBufferConfig: true,
-                        hasImgbbConfig: true,
+                        hasR2Config: true,
                         raindropClientId: 'mock_rd_id',
                         bufferProfileId: 'mock_buf_id'
                     })
                 });
             }
 
-            if (url === '/api/venice/test' || url === '/api/imgbb/test' || url === '/api/auth/twitter/test') {
+            if (url === '/api/venice/test' || url === '/api/auth/r2/test') {
                 return Promise.resolve({
                     ok: true,
                     json: () => Promise.resolve({ success: true, modelsCount: 12 })

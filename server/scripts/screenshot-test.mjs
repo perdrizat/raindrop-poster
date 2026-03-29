@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * screenshot-test.mjs — standalone screenshot capture & ImgBB upload script.
+ * screenshot-test.mjs — standalone screenshot capture & R2 upload script.
  *
  * Runs the full production screenshot pipeline (real Puppeteer + dismissPopups +
  * Wayback Machine fallback) on a curated set of "problem URLs", uploads each
- * result to ImgBB with 1-hour retention, and prints the public URLs.
+ * result to Cloudflare R2, and prints the public URLs.
  *
  * This script is meant to be invoked by scripts/screenshot-test.sh, which
  * also downloads the images to /tmp for local inspection.
@@ -16,7 +16,7 @@
  *   ./scripts/screenshot-test.sh
  *
  * Required:
- *   IMGBB_API_KEY — set via the app Setup page (SQLite) or as an env var.
+ *   Cloudflare R2 credentials — set via the app Setup page (SQLite) or as env vars.
  *
  * Output format (stdout):
  *   Progress lines are prefixed with "#" so the shell wrapper can skip them.
@@ -25,7 +25,7 @@
  *
  * HOW TO VERIFY THE GENERATED SCREENSHOTS
  * ----------------------------------------
- * Open each downloaded image (or ImgBB URL) and check:
+ * Open each downloaded image (or R2 URL) and check:
  *
  *   (i)  CORRECT QUOTE HIGHLIGHTED
  *        The text matching the expected quote (see TEST_CASES below) must be
@@ -60,9 +60,8 @@
  *     attribution — { author, date, domain } for the dark bar at the bottom
  */
 
-import axios from 'axios';
 import { captureQuoteScreenshot } from '../services/screenshotService.js';
-import { getSetting } from '../services/db.js';
+import { uploadImage } from '../services/imageHostService.js';
 import { shutdownPool } from '../services/scraperService.js';
 
 // Enable the full production code path: 8 s wait + dismissPopups + Wayback fallback.
@@ -107,28 +106,6 @@ const TEST_CASES = [
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-async function uploadTestImage(pngBuffer) {
-    const apiKey = process.env.IMGBB_API_KEY || await getSetting('IMGBB_API_KEY');
-    if (!apiKey) {
-        const dbPath = process.env.DATA_DIR
-            ? `${process.env.DATA_DIR}/raindrop.sqlite`
-            : `${process.cwd()}/raindrop.sqlite`;
-        throw new Error(
-            `IMGBB_API_KEY not found in env or DB (${dbPath}).\n` +
-            `  → Set it via the app Setup page, or pass: IMGBB_API_KEY=<key> ./scripts/screenshot-test.sh`
-        );
-    }
-
-    const params = new URLSearchParams();
-    params.append('image', pngBuffer.toString('base64'));
-
-    const response = await axios.post(
-        `https://api.imgbb.com/1/upload?key=${apiKey}&expiration=3600`,
-        params
-    );
-    return response.data.data.url;
-}
-
 function log(msg) { process.stderr.write(msg + '\n'); }
 
 // ---------------------------------------------------------------------------
@@ -146,7 +123,7 @@ async function main() {
                 throw new Error(`Buffer too small (${Buffer.isBuffer(buffer) ? buffer.length : typeof buffer} bytes)`);
             }
 
-            const imageUrl = await uploadTestImage(buffer);
+            const { url: imageUrl } = await uploadImage(buffer);
             log(`    ✓ uploaded (${(buffer.length / 1024).toFixed(0)} KB) → ${imageUrl}`);
             // Parseable line read by the shell script
             process.stdout.write(`IMG\t${name}\t${imageUrl}\n`);

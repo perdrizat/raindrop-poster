@@ -7,7 +7,8 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
     const [postContent, setPostContent] = useState(proposal);
     const [quote, setQuote] = useState(article.highlight || '');
     const [localQuote, setLocalQuote] = useState(article.highlight || '');
-    const [screenshotUrl, setScreenshotUrl] = useState(null);
+    const [imageData, setImageData] = useState(null);   // base64 data URL
+    const [coverUrl, setCoverUrl] = useState(null);     // public URL (cover shortcut)
     const [isCapturing, setIsCapturing] = useState(false);
     const [captureError, setCaptureError] = useState(null);
     const [isPublishing, setIsPublishing] = useState(false);
@@ -60,7 +61,13 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
             }
 
             const data = await response.json();
-            setScreenshotUrl(data.screenshotUrl);
+            if (data.imageData) {
+                setImageData(data.imageData);
+                setCoverUrl(null);
+            } else if (data.coverUrl) {
+                setCoverUrl(data.coverUrl);
+                setImageData(null);
+            }
         } catch (err) {
             console.error("Screenshot capture error:", err);
             setCaptureError('Could not capture screenshot. You can still publish without an image.');
@@ -89,18 +96,8 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
                 reader.readAsDataURL(file);
             });
 
-            const response = await fetch('/api/imgbb/upload', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: base64Image })
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to upload custom image');
-            }
-
-            const data = await response.json();
-            setScreenshotUrl(data.url);
+            setImageData(base64Image);
+            setCoverUrl(null);
         } catch (error) {
             console.error('Upload Error:', error);
             setCaptureError(error.message);
@@ -143,8 +140,9 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
         }
         try {
             // Build post text
+            const hasImage = !!(imageData || coverUrl);
             let fullText;
-            if (screenshotUrl) {
+            if (hasImage) {
                 // Screenshot carries the quote visually — just text + URL
                 fullText = `${postContent}\n\n${article.link}`;
             } else {
@@ -154,7 +152,7 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
                 const attribution = attributionAuthor ? `Says ${attributionAuthor}: "${fullQuote}"` : `"${fullQuote}"`;
                 fullText = `${postContent}\n\n${attribution}\n\nvia ${article.link}`;
             }
-            const result = await publishPost(fullText, article.link, screenshotUrl, destinationId, bufferChannels, modeToUse);
+            const result = await publishPost(fullText, article.link, { imageData, coverUrl }, destinationId, bufferChannels, modeToUse);
             setPublishSuccessData(result);
 
             // Epic 5: Update tags in Raindrop.io
@@ -287,9 +285,9 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
                             </div>
                         ) : captureError ? (
                             <p className="text-sm text-yellow-600 dark:text-yellow-400">{captureError}</p>
-                        ) : screenshotUrl ? (
+                        ) : (imageData || coverUrl) ? (
                             <img
-                                src={screenshotUrl}
+                                src={imageData || coverUrl}
                                 alt="Quote screenshot"
                                 className="rounded-lg max-w-full max-h-64 object-contain border border-gray-200 dark:border-gray-700"
                             />

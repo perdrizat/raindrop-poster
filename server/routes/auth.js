@@ -2,13 +2,9 @@ import express from 'express';
 import crypto from 'crypto';
 import axios from 'axios';
 import { getSetting, setSetting } from '../services/db.js';
+import { testConnection } from '../services/imageHostService.js';
 
 const router = express.Router();
-
-// Helper to generate a code verifier for OAuth 2.0 PKCE (used by Twitter)
-function generateCodeVerifier() {
-    return crypto.randomBytes(32).toString('base64url');
-}
 
 // Helper to generate a state parameter for CSRF protection
 function generateState() {
@@ -39,7 +35,7 @@ router.get('/status', async (req, res) => {
         raindropio: !!(req.session.raindropio || await getSetting('RAINDROPIO_ACCESS_TOKEN')),
         venice: !!(process.env.VENICE_API_KEY || await getSetting('VENICE_API_KEY')),
         buffer: !!(process.env.BUFFER_ACCESS_TOKEN || await getSetting('BUFFER_ACCESS_TOKEN')),
-        imgbb: !!(process.env.IMGBB_API_KEY || await getSetting('IMGBB_API_KEY')),
+        r2: !!(process.env.R2_ACCOUNT_ID || await getSetting('R2_ACCOUNT_ID')),
     });
 });
 
@@ -101,51 +97,17 @@ router.get('/buffer/test', async (req, res) => {
     }
 });
 
-// --- IMGBB API KEY ---
-router.post('/imgbb/key', async (req, res) => {
-    const { apiKey } = req.body;
-    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-        return res.status(400).json({ error: 'API key is required' });
-    }
-    await setSetting('IMGBB_API_KEY', apiKey.trim());
-    process.env.IMGBB_API_KEY = apiKey.trim();
-    res.json({ success: true });
-});
-
-router.get('/imgbb/test', async (req, res) => {
-    const key = process.env.IMGBB_API_KEY || await getSetting('IMGBB_API_KEY');
-    if (!key) {
-        return res.status(401).json({ error: 'ImgBB API key not configured' });
-    }
-
+// --- CLOUDFLARE R2 TEST ---
+router.get('/r2/test', async (req, res) => {
     try {
-        // The ImgBB API doesn't have a "status" or "profile" endpoint, only an upload endpoint.
-        // To validate the key, we upload a 1x1 transparent PNG that expires in 60 seconds.
-        const testImageBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
-        const params = new URLSearchParams();
-        params.append('image', testImageBase64);
-        params.append('name', 'connection_test_raindrop');
-
-        console.log('ImgBB API → test upload');
-        const response = await axios.post(
-            `https://api.imgbb.com/1/upload?key=${key}&expiration=60`,
-            params
-        );
-
-        if (response.data && response.data.success) {
-            console.log('ImgBB API ✓ test upload succeeded');
-            res.json({
-                success: true,
-                message: 'ImgBB API key is valid and connected',
-                imageUrl: response.data.data.urlViewer || response.data.data.url,
-                imageName: response.data.data.image?.filename || 'test_image.png'
-            });
-        } else {
-            res.status(502).json({ error: 'ImgBB API rejected the test upload' });
-        }
+        console.log('R2 API → test connection');
+        const result = await testConnection();
+        console.log(`R2 API ✓ ${result.message}`);
+        res.json(result);
     } catch (error) {
-        const errMsg = error.response?.data?.error?.message || error.message || 'Failed to connect to ImgBB API';
-        res.status(502).json({ error: `ImgBB API Error: ${errMsg}` });
+        const errMsg = error.message || 'Failed to connect to Cloudflare R2';
+        console.error(`R2 API ✗ ${errMsg}`);
+        res.status(502).json({ error: `R2 Error: ${errMsg}` });
     }
 });
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # screenshot-test.sh
 #
-# Runs the screenshot pipeline on all problem URLs, uploads results to ImgBB
-# (1-hour retention), downloads the images to /tmp/raindrop-screenshots/, and
-# prints a summary with file paths ready for visual / AI-vision inspection.
+# Runs the screenshot pipeline on all problem URLs, uploads results to R2,
+# downloads the images to /tmp/raindrop-screenshots/, and prints a summary
+# with file paths ready for visual / AI-vision inspection.
 #
 # Usage:
 #   ./scripts/screenshot-test.sh
@@ -50,7 +50,7 @@ for line in "${lines[@]}"; do
         dest="$OUTPUT_DIR/${safe_name}.png"
         curl -sL "$value" -o "$dest"
         echo "  ✓  $name"
-        echo "     ImgBB : $value"
+        echo "     R2    : $value"
         echo "     Local : $dest"
         echo ""
         image_paths+=("$dest")

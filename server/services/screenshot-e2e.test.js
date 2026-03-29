@@ -1,15 +1,9 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { captureQuoteScreenshot } from './screenshotService.js';
 import { uploadImage } from './imageHostService.js';
 import * as scraperService from './scraperService.js';
-import { setSetting } from './db.js';
 
-// Seed IMGBB_API_KEY into SQLite if available in environment (e.g. from CI or local shell)
-beforeAll(async () => {
-    if (process.env.IMGBB_API_KEY) {
-        await setSetting('IMGBB_API_KEY', process.env.IMGBB_API_KEY);
-    }
-});
+// R2 credentials should be configured via the app Setup page (SQLite) or env vars.
 
 // DO NOT MOCK PUPPETEER globally in this test, this is a real E2E integration test.
 // We only spy on getBrowser to intercept the moment before capture.
@@ -41,7 +35,7 @@ describe.skip('Screenshot E2E Integration', () => {
         }
     ];
 
-    it.each(testCases)('should navigate, highlight, inject attribution, and upload to ImgBB for $name', async ({ url, quote, attribution, expectedHighlightText }) => {
+    it.each(testCases)('should navigate, highlight, inject attribution, and upload to R2 for $name', async ({ url, quote, attribution, expectedHighlightText }) => {
         let domState = {};
 
         // 1. Spy on acquireBrowser to intercept the page object
@@ -107,13 +101,11 @@ describe.skip('Screenshot E2E Integration', () => {
         // Ensure it's not a tiny broken image
         expect(buffer.length).toBeGreaterThan(10000);
 
-        // 3. Upload to real ImgBB (key should be in SQLite via beforeAll seed or Setup page)
-        const imgbbKey = await import('./db.js').then(m => m.getSetting('IMGBB_API_KEY'));
-        expect(imgbbKey).toBeDefined();
+        // 3. Upload to real R2 (credentials should be in SQLite via Setup page or env vars)
         const uploadResult = await uploadImage(buffer);
 
         expect(uploadResult).toHaveProperty('url');
-        expect(uploadResult.url).toMatch(/^https:\/\/i\.ibb\.co\//);
+        expect(uploadResult).toHaveProperty('key');
 
         console.log(`✅ E2E Screenshot verified for ${url} and uploaded to: ${uploadResult.url}`);
 

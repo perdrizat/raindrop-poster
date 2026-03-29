@@ -7,10 +7,10 @@ test('epic 6: buffer, queue persistence, and settings categories', async ({ page
             status: 200,
             contentType: 'application/json',
             body: JSON.stringify({
-                twitter: true,
                 raindropio: true,
                 venice: true,
-                buffer: true
+                buffer: true,
+                r2: true
             })
         });
     });

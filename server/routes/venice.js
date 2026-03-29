@@ -143,7 +143,7 @@ ${articleText.substring(0, 100).replace(/\\n/g, ' ')}... [TRUNCATED ${articleTex
         try {
             parsed = JSON.parse(rawContent);
         } catch (e) {
-            const jsonMatch = rawContent.match(/```(?:json)?\\s*(\\{[\\s\\S]*?\\})\\s*```/);
+            const jsonMatch = rawContent.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
             if (jsonMatch) {
                 parsed = JSON.parse(jsonMatch[1]);
             } else {

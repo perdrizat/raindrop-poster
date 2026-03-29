@@ -33,6 +33,9 @@ function App() {
       }
     };
     checkSystemStatus();
+
+    // Trigger cleanup check in background (runs only if >6h since last check)
+    fetch('/api/cleanup/trigger').catch(() => {});
   }, []);
 
   React.useEffect(() => {

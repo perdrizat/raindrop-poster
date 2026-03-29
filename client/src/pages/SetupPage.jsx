@@ -10,7 +10,7 @@ const SetupPage = () => {
         raindropio: false,
         venice: false,
         buffer: false,
-        imgbb: false,
+        r2: false,
     });
     const [tags, setTags] = useState([]);
     const [selectedTag, setSelectedTag] = useState(() => loadSettings().selectedTag);
@@ -23,7 +23,11 @@ const SetupPage = () => {
     const [veniceApiKey, setVeniceApiKey] = useState('');
     const [bufferAccessToken, setBufferAccessToken] = useState('');
     const [bufferProfileId, setBufferProfileId] = useState('');
-    const [imgbbKey, setImgbbKey] = useState('');
+    const [r2AccountId, setR2AccountId] = useState('');
+    const [r2AccessKeyId, setR2AccessKeyId] = useState('');
+    const [r2SecretAccessKey, setR2SecretAccessKey] = useState('');
+    const [r2BucketName, setR2BucketName] = useState('');
+    const [r2PublicUrl, setR2PublicUrl] = useState('');
 
     const [isSaving, setIsSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState('');
@@ -47,7 +51,7 @@ const SetupPage = () => {
                     raindropio: authStatus.raindropio,
                     venice: authStatus.venice,
                     buffer: authStatus.buffer,
-                    imgbb: authStatus.imgbb,
+                    r2: authStatus.r2,
                 });
 
                 setSysStatus(systemStatus);
@@ -133,18 +137,15 @@ const SetupPage = () => {
             setTestMessage({ type: 'error', text: result.error });
         } else {
             let msg = 'Connection successful!';
-            if (providerId === 'raindropio') msg = `Raindrop connected as ${result.user}`;
+            if (providerId === 'raindropio') {
+                msg = `Raindrop connected as ${result.user}`;
+                if (result.bookmarkCount != null) msg += ` (${result.bookmarkCount} bookmarks)`;
+            }
             if (providerId === 'venice') msg = `Venice connected (${result.modelsCount} models found)`;
             if (providerId === 'buffer') msg = `Buffer connected — ${result.channelCount} channel(s) on ${result.services}`;
-            if (providerId === 'imgbb') {
-                msg = result.imageUrl ? (
-                    <span>
-                        ImgBB upload test:{' '}
-                        <a href={result.imageUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-200">
-                            {result.imageName || 'image.png'}
-                        </a> ✓
-                    </span>
-                ) : `ImgBB API key is valid and connected ✓`;
+            if (providerId === 'r2') {
+                msg = result.message || 'Cloudflare R2 connected';
+                if (result.lastUpload) msg += ` — last upload ${new Date(result.lastUpload).toLocaleDateString()}`;
             }
             setTestMessage({ type: 'success', text: msg });
         }
@@ -163,7 +164,11 @@ const SetupPage = () => {
                 veniceApiKey,
                 bufferAccessToken,
                 bufferProfileId,
-                imgbbApiKey: imgbbKey,
+                r2AccountId,
+                r2AccessKeyId,
+                r2SecretAccessKey,
+                r2BucketName,
+                r2PublicUrl,
                 selectedTag,
                 postingObjectives: objectives,
                 bufferChannels,
@@ -186,7 +191,7 @@ const SetupPage = () => {
                     ...prev,
                     venice: authStatus.venice,
                     buffer: authStatus.buffer,
-                    imgbb: authStatus.imgbb
+                    r2: authStatus.r2
                 }));
 
                 // Optionally clear the inputs if you don't want to leave passwords on screen
@@ -223,7 +228,7 @@ const SetupPage = () => {
                             rows="2"
                             value={objectives}
                             onChange={(e) => setObjectives(e.target.value)}
-                            placeholder="E.g., Propose engaging Twitter posts that help me increase my follower count..."
+                            placeholder="E.g., Propose engaging social media posts that help me increase my follower count..."
                             className="block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-3 px-4 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-black dark:text-white transition-colors duration-200 resize-y"
                         />
                     </div>
@@ -252,17 +257,40 @@ const SetupPage = () => {
                         </div>
                     </section>
 
-                    {/* Venice & ImgBB BYOK */}
+                    {/* Venice AI BYOK */}
                     <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 flex flex-col space-y-4">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Venice AI & ImgBB</h3>
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Venice AI</h3>
                         <div className="space-y-3 flex-grow">
                             <div>
                                 <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Venice API Key {connections.venice && <span className="text-green-500">✓</span>}</label>
                                 <input type="password" value={veniceApiKey} onChange={e => setVeniceApiKey(e.target.value)} placeholder="Enter Venice API Key" className="mt-1 block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none dark:bg-black dark:text-white" />
                             </div>
+                        </div>
+                    </section>
+
+                    {/* Cloudflare R2 BYOK */}
+                    <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 flex flex-col space-y-4">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Cloudflare R2 {sysStatus?.hasR2Config && <span className="text-green-500 text-sm ml-2">✓ Configured</span>}</h3>
+                        <div className="space-y-3 flex-grow">
                             <div>
-                                <label className="text-xs font-medium text-gray-700 dark:text-gray-300">ImgBB API Key {connections.imgbb && <span className="text-green-500">✓</span>}</label>
-                                <input type="password" value={imgbbKey} onChange={e => setImgbbKey(e.target.value)} placeholder="Enter ImgBB Key" className="mt-1 block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none dark:bg-black dark:text-white" />
+                                <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Account ID</label>
+                                <input type="text" value={r2AccountId} onChange={e => setR2AccountId(e.target.value)} placeholder="Enter Account ID" className="mt-1 block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none dark:bg-black dark:text-white" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Access Key ID</label>
+                                <input type="password" value={r2AccessKeyId} onChange={e => setR2AccessKeyId(e.target.value)} placeholder="Enter Access Key ID" className="mt-1 block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none dark:bg-black dark:text-white" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Secret Access Key</label>
+                                <input type="password" value={r2SecretAccessKey} onChange={e => setR2SecretAccessKey(e.target.value)} placeholder="Enter Secret Access Key" className="mt-1 block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none dark:bg-black dark:text-white" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Bucket Name</label>
+                                <input type="text" value={r2BucketName} onChange={e => setR2BucketName(e.target.value)} placeholder="Enter Bucket Name" className="mt-1 block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none dark:bg-black dark:text-white" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Public URL</label>
+                                <input type="text" value={r2PublicUrl} onChange={e => setR2PublicUrl(e.target.value)} placeholder="https://pub-xxx.r2.dev" className="mt-1 block w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none dark:bg-black dark:text-white" />
                             </div>
                         </div>
                     </section>
@@ -338,9 +366,9 @@ const SetupPage = () => {
                             />
 
                             <ProviderButton
-                                providerName="ImgBB"
-                                providerId="imgbb"
-                                isConnected={connections.imgbb}
+                                providerName="Cloudflare R2"
+                                providerId="r2"
+                                isConnected={connections.r2}
                                 onConnect={() => { }}
                                 onTest={handleTest}
                             />

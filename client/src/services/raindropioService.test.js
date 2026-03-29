@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
-import { fetchTaggedItems, updateBookmarkTags } from './raindropioService';
+import { fetchTags, fetchTaggedItems, updateBookmarkTags } from './raindropioService';
 
 describe('raindropioService', () => {
     const originalFetch = globalThis.fetch;
@@ -10,6 +10,48 @@ describe('raindropioService', () => {
 
     afterAll(() => {
         globalThis.fetch = originalFetch;
+    });
+
+    describe('fetchTags', () => {
+        it('should return tag names from objects with _id', async () => {
+            globalThis.fetch.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    tags: [{ _id: 'react', count: 5 }, { _id: 'vue', count: 3 }]
+                })
+            });
+            const result = await fetchTags();
+            expect(result).toEqual(['react', 'vue']);
+        });
+
+        it('should handle string tags (non-object format)', async () => {
+            globalThis.fetch.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ tags: ['alpha', 'beta'] })
+            });
+            const result = await fetchTags();
+            expect(result).toEqual(['alpha', 'beta']);
+        });
+
+        it('should return empty array when tags is null/missing', async () => {
+            globalThis.fetch.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({})
+            });
+            const result = await fetchTags();
+            expect(result).toEqual([]);
+        });
+
+        it('should throw on 401 unauthorized', async () => {
+            globalThis.fetch.mockResolvedValueOnce({ status: 401 });
+            await expect(fetchTags()).rejects.toThrow('unauthorized');
+        });
+
+        it('should return empty array on network error', async () => {
+            globalThis.fetch.mockRejectedValueOnce(new Error('Network error'));
+            const result = await fetchTags();
+            expect(result).toEqual([]);
+        });
     });
 
     describe('fetchTaggedItems', () => {
@@ -50,6 +92,11 @@ describe('raindropioService', () => {
             expect(result[2].highlight).toEqual(''); // Added missing fallback case
         });
 
+        it('should throw on 401 unauthorized', async () => {
+            globalThis.fetch.mockResolvedValueOnce({ status: 401 });
+            await expect(fetchTaggedItems('tag')).rejects.toThrow('unauthorized');
+        });
+
         it('should return empty array on failure or missing items array', async () => {
             globalThis.fetch.mockResolvedValueOnce({
                 ok: false,
@@ -83,6 +130,11 @@ describe('raindropioService', () => {
                 body: JSON.stringify({ tags: ['new_tag_posted'] }),
             });
             expect(result).toBe(true);
+        });
+
+        it('should throw on 401 unauthorized', async () => {
+            globalThis.fetch.mockResolvedValueOnce({ status: 401 });
+            await expect(updateBookmarkTags('1234', ['tag'])).rejects.toThrow('unauthorized');
         });
 
         it('should return false if the API request fails', async () => {

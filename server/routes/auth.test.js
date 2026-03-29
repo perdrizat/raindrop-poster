@@ -17,6 +17,11 @@ vi.mock('../services/db.js', () => {
         _resetMockDb: () => { mockDb = {}; }
     };
 });
+vi.mock('../services/imageHostService.js', () => ({
+    testConnection: vi.fn(),
+}));
+
+import { testConnection } from '../services/imageHostService.js';
 
 
 // 2. Setup an isolated Express app for testing the router
@@ -43,10 +48,10 @@ describe('Auth Routes', () => {
         vi.clearAllMocks();
 
         // Clear DB state that might leak from other suites
-        await setSetting('IMGBB_API_KEY', '');
         await setSetting('BUFFER_ACCESS_TOKEN', '');
         await setSetting('VENICE_API_KEY', '');
         await setSetting('RAINDROPIO_ACCESS_TOKEN', '');
+        await setSetting('R2_ACCOUNT_ID', '');
 
         // Inject Mock Environment Variables
         process.env.RAINDROPIO_CLIENT_ID = 'rd_id';
@@ -66,7 +71,7 @@ describe('Auth Routes', () => {
                 raindropio: false,
                 venice: true,
                 buffer: true,
-                imgbb: false,
+                r2: false,
             });
         });
     });
@@ -131,46 +136,22 @@ describe('Auth Routes', () => {
         });
     });
 
-    describe('ImgBB API key endpoints', () => {
-        it('POST /api/auth/imgbb/key should save the API key', async () => {
-            const res = await request(app)
-                .post('/api/auth/imgbb/key')
-                .send({ apiKey: 'test_imgbb_key' });
-            expect(res.status).toBe(200);
-            expect(res.body).toEqual({ success: true });
-            expect(process.env.IMGBB_API_KEY).toBe('test_imgbb_key');
-        });
+    describe('Cloudflare R2 test endpoint', () => {
+        it('GET /api/auth/r2/test should return success when R2 is configured', async () => {
+            testConnection.mockResolvedValueOnce({ success: true, message: 'Connected to R2 bucket "my-bucket"' });
 
-        it('POST /api/auth/imgbb/key should reject empty key', async () => {
-            const res = await request(app)
-                .post('/api/auth/imgbb/key')
-                .send({ apiKey: '' });
-            expect(res.status).toBe(400);
-        });
-
-        it('GET /api/auth/imgbb/test should return success when key is set', async () => {
-            process.env.IMGBB_API_KEY = 'test_key';
-            axios.post.mockResolvedValueOnce({
-                data: {
-                    success: true,
-                    data: {
-                        url: 'https://i.ibb.co/mock/image.png',
-                        urlViewer: 'https://imgbb.com/viewer/mock'
-                    }
-                }
-            });
-
-            const res = await request(app).get('/api/auth/imgbb/test');
+            const res = await request(app).get('/api/auth/r2/test');
             expect(res.status).toBe(200);
             expect(res.body.success).toBe(true);
-            expect(res.body.imageUrl).toBeDefined();
+            expect(res.body.message).toContain('Connected');
         });
 
-        it('GET /api/auth/imgbb/test should return 401 when key is missing', async () => {
-            delete process.env.IMGBB_API_KEY;
-            await setSetting('IMGBB_API_KEY', ''); // Clear DB state for this test too
-            const res = await request(app).get('/api/auth/imgbb/test');
-            expect(res.status).toBe(401);
+        it('GET /api/auth/r2/test should return 502 when R2 is not configured', async () => {
+            testConnection.mockRejectedValueOnce(new Error('Cloudflare R2 is not configured'));
+
+            const res = await request(app).get('/api/auth/r2/test');
+            expect(res.status).toBe(502);
+            expect(res.body.error).toContain('R2');
         });
     });
 

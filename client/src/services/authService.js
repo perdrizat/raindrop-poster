@@ -9,7 +9,7 @@ export const testConnection = async (provider) => {
         if (provider === 'raindropio') endpoint = '/api/raindropio/test';
         if (provider === 'venice') endpoint = '/api/venice/test';
         if (provider === 'buffer') endpoint = '/api/auth/buffer/test';
-        if (provider === 'imgbb') endpoint = '/api/auth/imgbb/test';
+        if (provider === 'r2') endpoint = '/api/auth/r2/test';
 
         const response = await fetch(endpoint, {
             credentials: 'include'
@@ -34,6 +34,6 @@ export const checkAuthStatus = async () => {
         return await response.json();
     } catch (err) {
         console.error("Status check error:", err);
-        return { raindropio: false, venice: false, buffer: false, imgbb: false };
+        return { raindropio: false, venice: false, buffer: false, r2: false };
     }
 };

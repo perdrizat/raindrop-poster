@@ -85,5 +85,96 @@ describe('Venice API Routes', () => {
             const res = await request(app).post('/api/venice/generate').send({ articleText: 'text' });
             expect(res.status).toBe(502);
         });
+
+        it('should return highlight when isHighlightSelection is true', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+
+            axios.post.mockResolvedValueOnce({
+                data: {
+                    choices: [
+                        { message: { content: '{"highlight":"The best quote from the article"}' } }
+                    ]
+                }
+            });
+
+            const res = await request(app).post('/api/venice/generate').send({
+                articleText: 'Some article text',
+                metadata: { isHighlightSelection: true, highlight: 'quote1\nquote2' }
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body.highlight).toBe('The best quote from the article');
+            expect(res.body.proposals).toBeUndefined();
+        });
+
+        it('should parse markdown-wrapped JSON from LLM response', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+
+            axios.post.mockResolvedValueOnce({
+                data: {
+                    choices: [
+                        { message: { content: '```json\n{"proposals":["A","B","C"], "author":"Bob"}\n```' } }
+                    ]
+                }
+            });
+
+            const res = await request(app).post('/api/venice/generate').send({
+                articleText: 'Article text here'
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body.proposals).toEqual(['A', 'B', 'C']);
+            expect(res.body.author).toBe('Bob');
+        });
+
+        it('should return 502 when LLM returns completely malformed output', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+
+            axios.post.mockResolvedValueOnce({
+                data: {
+                    choices: [
+                        { message: { content: 'This is not JSON at all, just plain text rambling.' } }
+                    ]
+                }
+            });
+
+            const res = await request(app).post('/api/venice/generate').send({
+                articleText: 'Article text'
+            });
+
+            expect(res.status).toBe(502);
+            expect(res.body.error).toMatch(/Failed to generate/);
+        });
+
+        it('should return 401 if VENICE_API_KEY is not configured for generate', async () => {
+            const res = await request(app).post('/api/venice/generate').send({
+                articleText: 'Some text'
+            });
+
+            expect(res.status).toBe(401);
+            expect(res.body.error).toMatch(/VENICE_API_KEY.*not configured/);
+        });
+    });
+
+    describe('GET /api/venice/test (error handling)', () => {
+        it('should return 502 when Venice API connection fails', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.get.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+            const res = await request(app).get('/api/venice/test');
+            expect(res.status).toBe(502);
+            expect(res.body.error).toMatch(/Failed to connect/);
+        });
+
+        it('should handle non-array models response gracefully', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.get.mockResolvedValueOnce({
+                data: { data: 'not-an-array' }
+            });
+
+            const res = await request(app).get('/api/venice/test');
+            expect(res.status).toBe(200);
+            expect(res.body.modelsCount).toBe('unknown');
+        });
     });
 });

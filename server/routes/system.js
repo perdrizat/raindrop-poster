@@ -5,7 +5,7 @@ const router = express.Router();
 
 /**
  * Validates if the most basic required keys exist to launch the app.
- * A user might only have Twitter configured, or only Buffer configured.
+ * A user might only have Buffer configured, or only Venice configured.
  * But Raindrop.io is universally required to fetch content.
  */
 const checkMinimumConfig = async () => {
@@ -21,7 +21,7 @@ const checkMinimumConfig = async () => {
         hasRaindropConfig,
         hasVeniceConfig: !!(process.env.VENICE_API_KEY || await getSetting('VENICE_API_KEY')),
         hasBufferConfig: !!(process.env.BUFFER_ACCESS_TOKEN || await getSetting('BUFFER_ACCESS_TOKEN')),
-        hasImgbbConfig: !!(process.env.IMGBB_API_KEY || await getSetting('IMGBB_API_KEY')),
+        hasR2Config: !!(process.env.R2_ACCOUNT_ID || await getSetting('R2_ACCOUNT_ID')),
         raindropClientId: raindropId || '',
         bufferProfileId: process.env.BUFFER_PROFILE_ID || await getSetting('BUFFER_PROFILE_ID') || '',
         selectedTag: await getSetting('SELECTED_TAG') || '',
@@ -48,7 +48,11 @@ router.post('/configure', async (req, res) => {
             veniceApiKey,
             bufferAccessToken,
             bufferProfileId,
-            imgbbApiKey,
+            r2AccountId,
+            r2AccessKeyId,
+            r2SecretAccessKey,
+            r2BucketName,
+            r2PublicUrl,
             selectedTag,
             postingObjectives,
             bufferChannels,
@@ -68,7 +72,11 @@ router.post('/configure', async (req, res) => {
             saveConfig('VENICE_API_KEY', veniceApiKey),
             saveConfig('BUFFER_ACCESS_TOKEN', bufferAccessToken),
             saveConfig('BUFFER_PROFILE_ID', bufferProfileId),
-            saveConfig('IMGBB_API_KEY', imgbbApiKey),
+            saveConfig('R2_ACCOUNT_ID', r2AccountId),
+            saveConfig('R2_ACCESS_KEY_ID', r2AccessKeyId),
+            saveConfig('R2_SECRET_ACCESS_KEY', r2SecretAccessKey),
+            saveConfig('R2_BUCKET_NAME', r2BucketName),
+            saveConfig('R2_PUBLIC_URL', r2PublicUrl),
         ];
 
         // User workflow preferences — always overwrite (empty string is valid)

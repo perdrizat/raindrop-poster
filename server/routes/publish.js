@@ -1,12 +1,13 @@
 import express from 'express';
 import axios from 'axios';
-import { getSetting } from '../services/db.js';
+import { getSetting, trackPostImage } from '../services/db.js';
+import { uploadImage } from '../services/imageHostService.js';
 
 const router = express.Router();
 
 router.post('/', async (req, res) => {
     try {
-        const { text, articleUrl, screenshotUrl } = req.body;
+        const { text, articleUrl, imageData, coverUrl } = req.body;
 
         if (!text) {
             return res.status(400).json({ error: 'Post text is required' });
@@ -75,14 +76,26 @@ router.post('/', async (req, res) => {
                         break;
                 }
 
-                // Attach image if screenshot URL is provided
-                if (screenshotUrl) {
+                // Upload imageData to R2 or use coverUrl directly
+                let imageUrl = null;
+                let r2Key = null;
+                if (imageData) {
+                    const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '');
+                    const buffer = Buffer.from(base64Data, 'base64');
+                    const uploaded = await uploadImage(buffer);
+                    imageUrl = uploaded.url;
+                    r2Key = uploaded.key;
+                } else if (coverUrl) {
+                    imageUrl = coverUrl;
+                }
+
+                if (imageUrl) {
                     input.assets = {
-                        images: [{ url: screenshotUrl }]
+                        images: [{ url: imageUrl }]
                     };
                 }
 
-                console.log(`Buffer API → createPost channel=${channelId} mode=${input.mode} scheduling=${input.schedulingType}${input.saveToDraft ? ' draft=true' : ''}${screenshotUrl ? ' +image' : ''}`);
+                console.log(`Buffer API → createPost channel=${channelId} mode=${input.mode} scheduling=${input.schedulingType}${input.saveToDraft ? ' draft=true' : ''}${imageUrl ? ' +image' : ''}`);
 
                 const response = await axios.post('https://api.buffer.com/1/graphql', {
                     query,
@@ -105,6 +118,9 @@ router.post('/', async (req, res) => {
                     console.log(`Buffer API ✓ channel=${channelId} postId=${result.post.id}`);
                     postedIds.push(result.post.id);
                     successCount++;
+                    if (r2Key) {
+                        await trackPostImage(result.post.id, r2Key, channelId);
+                    }
                 } else if (result?.__typename === 'InvalidInputError' || result?.__typename === 'UnexpectedError') {
                     console.error(`Buffer API ✗ channel=${channelId}: ${result.message}`);
                     errors.push(`Channel ${channelId}: ${result.message}`);

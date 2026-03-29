@@ -16,7 +16,25 @@ router.get('/test', async (req, res) => {
 
         const userName = data.user.fullName || data.user.name;
         console.log(`Raindrop API ✓ user=${userName}`);
-        res.json({ success: true, user: userName });
+
+        const result = { success: true, user: userName };
+
+        // Fetch bookmark stats (graceful — don't fail the test if this errors)
+        try {
+            const stats = await withTokenRefresh(async (token) => {
+                const response = await axios.get('https://api.raindrop.io/rest/v1/user/stats', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                return response.data;
+            }, req);
+            const totalBookmarks = (stats.items || []).reduce((sum, col) => sum + (col.count || 0), 0);
+            result.bookmarkCount = totalBookmarks;
+            console.log(`Raindrop API ✓ ${totalBookmarks} bookmarks`);
+        } catch (e) {
+            console.warn('Raindrop API: could not fetch stats:', e.message);
+        }
+
+        res.json(result);
     } catch (error) {
         if (error.status === 401) {
             return res.status(401).json({ error: error.message });

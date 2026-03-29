@@ -9,7 +9,7 @@ import veniceRoutes from './routes/venice.js';
 import scrapeRoutes from './routes/scrape.js';
 import publishRoutes from './routes/publish.js';
 import screenshotRoutes from './routes/screenshot.js';
-import imageRoutes from './routes/image.js';
+import cleanupRoutes from './routes/cleanup.js';
 import systemRoutes from './routes/system.js';
 import path from 'path';
 import fs from 'fs';
@@ -77,7 +77,7 @@ app.use('/api/venice', veniceRoutes);
 app.use('/api/scrape', scrapeRoutes);
 app.use('/api/publish', publishRoutes);
 app.use('/api/screenshot', screenshotRoutes);
-app.use('/api/imgbb', imageRoutes);
+app.use('/api/cleanup', cleanupRoutes);
 
 // Basic health check endpoint
 app.get('/api/health', (req, res) => {

@@ -41,7 +41,7 @@ describe('ConfirmationPage', () => {
         // Mock the screenshot fetch
         globalThis.fetch = vi.fn().mockResolvedValue({
             ok: true,
-            json: async () => ({ screenshotUrl: 'https://i.ibb.co/abc/shot.png' }),
+            json: async () => ({ imageData: 'data:image/png;base64,fakescreenshot' }),
         });
     });
 
@@ -82,7 +82,7 @@ describe('ConfirmationPage', () => {
             expect(publishPost).toHaveBeenCalledWith(
                 expect.stringContaining("This is my generated post proposal"),
                 'https://example.com/hooks',
-                'https://i.ibb.co/abc/shot.png',
+                { imageData: 'data:image/png;base64,fakescreenshot', coverUrl: null },
                 'buffer',
                 ['linkedin-1'],
                 'draft'
@@ -162,38 +162,39 @@ describe('ConfirmationPage', () => {
         });
     });
 
-    it('allows uploading a custom screenshot via file selection and delegates to imgbb', async () => {
-        // Mock successful initial screenshot first
+    it('allows uploading a custom screenshot via file selection (local base64, no server upload)', async () => {
+        // Mock FileReader for jsdom
+        const origFileReader = globalThis.FileReader;
+        globalThis.FileReader = class {
+            readAsDataURL() {
+                setTimeout(() => this.onload?.(), 0);
+            }
+            result = 'data:image/png;base64,customupload';
+        };
+
         render(<ConfirmationPage {...defaultProps} />);
 
         await waitFor(() => {
             expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
         });
 
-        // Setup the ImgBB fetch mock specifically for the upload endpoint
-        globalThis.fetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({ success: true, url: 'https://i.ibb.co/custom/uploaded.png' })
-        });
-
-        // Find the "Upload Custom Image" label/input
         const fileInput = screen.getByLabelText(/Upload Custom Image/i);
-
-        // Simulate file upload
         const file = new File(['mock-image-data'], 'custom.png', { type: 'image/png' });
         fireEvent.change(fileInput, { target: { files: [file] } });
 
-        // Wait for the imgbb upload mock to be called
+        // Should NOT call any upload endpoint — image stays local as base64
         await waitFor(() => {
-            // Verify fetch to /api/imgbb/upload was sent
-            expect(globalThis.fetch).toHaveBeenCalledWith('/api/imgbb/upload', expect.objectContaining({
-                method: 'POST'
-            }));
+            const img = screen.getByAltText('Quote screenshot');
+            expect(img.src).toContain('data:image/png;base64,customupload');
         });
 
-        // Verify the image source updated in the DOM
-        const img = screen.getByAltText('Quote screenshot');
-        expect(img.src).toBe('https://i.ibb.co/custom/uploaded.png');
+        // Verify no upload calls were made (only the initial screenshot call)
+        const uploadCalls = globalThis.fetch.mock.calls.filter(
+            ([url]) => url !== '/api/screenshot'
+        );
+        expect(uploadCalls).toHaveLength(0);
+
+        globalThis.FileReader = origFileReader;
     });
 
     it('renders all four submit buttons with correct labels', async () => {
@@ -224,7 +225,7 @@ describe('ConfirmationPage', () => {
             updateBookmarkTags.mockResolvedValue(true);
             globalThis.fetch = vi.fn().mockResolvedValue({
                 ok: true,
-                json: async () => ({ screenshotUrl: 'https://i.ibb.co/abc/shot.png' }),
+                json: async () => ({ imageData: 'data:image/png;base64,fakescreenshot' }),
             });
             publishPost.mockResolvedValueOnce({ success: true, url: 'https://buffer.com/update/1' });
 
@@ -240,7 +241,7 @@ describe('ConfirmationPage', () => {
                 expect(publishPost).toHaveBeenCalledWith(
                     expect.any(String),
                     expect.any(String),
-                    expect.any(String),
+                    expect.objectContaining({}),
                     'buffer',
                     ['ch1'],
                     mode
@@ -252,25 +253,18 @@ describe('ConfirmationPage', () => {
     });
 
     it('clears spinner after image upload fails (no infinite hang)', async () => {
-        // Mock FileReader to synchronously resolve (jsdom's FileReader is incomplete)
+        // Mock FileReader to fail
         const origFileReader = globalThis.FileReader;
         globalThis.FileReader = class {
             readAsDataURL() {
-                setTimeout(() => this.onload?.(), 0);
+                setTimeout(() => this.onerror?.(new Error('Read failed')), 0);
             }
-            result = 'data:image/png;base64,fakedata';
         };
 
         render(<ConfirmationPage {...defaultProps} />);
 
         await waitFor(() => {
             expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
-        });
-
-        // Mock imgbb upload to fail
-        globalThis.fetch.mockResolvedValueOnce({
-            ok: false,
-            status: 500,
         });
 
         // Trigger upload via the file input (same code path as paste)
@@ -282,7 +276,7 @@ describe('ConfirmationPage', () => {
         await waitFor(() => {
             expect(screen.queryByText(/Capturing screenshot/i)).not.toBeInTheDocument();
         });
-        expect(screen.getByText(/Failed to upload custom image/i)).toBeInTheDocument();
+        expect(screen.getByText(/Failed to read file/i)).toBeInTheDocument();
 
         globalThis.FileReader = origFileReader;
     });

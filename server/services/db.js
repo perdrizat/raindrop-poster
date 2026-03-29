@@ -29,6 +29,15 @@ export const getDb = (dbPath = null) => {
                     value TEXT NOT NULL
                 )
             `);
+            dbInstance.run(`
+                CREATE TABLE IF NOT EXISTS post_images (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    post_id TEXT NOT NULL,
+                    r2_key TEXT NOT NULL,
+                    channel_id TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+            `);
         });
     }
     return dbInstance;
@@ -60,6 +69,50 @@ export const getSetting = (key) => {
             (err, row) => {
                 if (err) reject(err);
                 else resolve(row ? row.value : null);
+            }
+        );
+    });
+};
+
+// --- post_images helpers ---
+
+export const trackPostImage = (postId, r2Key, channelId) => {
+    return new Promise((resolve, reject) => {
+        const db = getDb();
+        db.run(
+            `INSERT INTO post_images (post_id, r2_key, channel_id) VALUES (?, ?, ?)`,
+            [postId, r2Key, channelId],
+            function (err) {
+                if (err) reject(err);
+                else resolve(this);
+            }
+        );
+    });
+};
+
+export const getUncleanedImages = () => {
+    return new Promise((resolve, reject) => {
+        const db = getDb();
+        db.all(
+            `SELECT * FROM post_images ORDER BY created_at ASC`,
+            [],
+            (err, rows) => {
+                if (err) reject(err);
+                else resolve(rows || []);
+            }
+        );
+    });
+};
+
+export const removePostImage = (postId) => {
+    return new Promise((resolve, reject) => {
+        const db = getDb();
+        db.run(
+            `DELETE FROM post_images WHERE post_id = ?`,
+            [postId],
+            function (err) {
+                if (err) reject(err);
+                else resolve(this);
             }
         );
     });
