@@ -1,21 +1,14 @@
-# Worklog
+# Changelog
 
-## 2026-04-01
+All notable changes to this project will be documented in this file.
 
-**What changed:**
-- Made Venice AI image generation lazy/on-demand — no longer auto-fires on mount, only triggers when user clicks the AI card
-- Added `onActivate` prop to `ImageCard` component for click-to-generate behavior
-- AI card now shows "Click to generate" placeholder and auto-selects when clicked
-- Fixed 3 existing tests that assumed AI auto-generation on mount
-- Added 5 new tests covering lazy-load behavior (no mount call, placeholder, spinner, auto-select, non-blocking publish)
-- Updated CLAUDE.md to require red/green TDD for all changes
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-**Decisions & rationale:**
-- Lazy AI generation to save Venice API credits — only generate when user explicitly wants it
-- Auto-select AI option on click so user doesn't need to click twice (once to generate, once to select)
+## [Unreleased]
 
-- Moved TDD and worklog-update instructions to global `~/.claude/CLAUDE.md` so they apply to all projects
-- Removed duplicate TDD rule from project-level `raindrop/CLAUDE.md`
+## [2026-04-01]
 
-**Open threads:**
-- Fill in remaining CLAUDE.md sections (build/test/deploy commands, architecture, key files)
+### Changed
+- Venice AI image generation is now on-demand — click the AI card to generate instead of auto-firing on mount (saves API credits)
+- Filled in CONTRIBUTING.md (symlinked as CLAUDE.md) with build/test/deploy commands, architecture, patterns, and key files
+- Trimmed README.md to user-facing content; developer details moved to CONTRIBUTING.md

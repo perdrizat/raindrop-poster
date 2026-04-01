@@ -1,29 +1,96 @@
-# raindrop
+# Raindrop Poster — Contributing Guide
 
-## Build
+## Build & Run
 
 ```bash
-# TODO: build commands
+# Install all dependencies
+npm install && (cd client && npm install) && (cd server && npm install)
+
+# Start client (Vite, port 5173) + server (Express, port 3001) concurrently
+npm run dev
 ```
+
+Vite proxies `/api` requests to the Express backend automatically.
 
 ## Test
 
 ```bash
-# TODO: test commands
+cd client && npx vitest run                        # Client unit tests (jsdom)
+cd server && npm test                               # Server unit tests
+cd server && npm run test:e2e                       # E2E tests (Puppeteer + real APIs)
+./scripts/screenshot-test.sh                        # Visual regression (downloads to /tmp/raindrop-screenshots/)
 ```
+
+- Client: Vitest + @testing-library/react, globals enabled, jsdom environment, setup in `src/setupTests.js`
+- Server: Vitest + supertest, separate configs for unit (`vitest.config.js`) and E2E (`vitest.e2e.config.js`)
 
 ## Deploy
 
 ```bash
-# TODO: deploy commands
+docker compose build && docker compose up -d        # Build & run on port 80
 ```
+
+Multi-stage Dockerfile: Stage 1 builds the Vite client, Stage 2 runs Express + Puppeteer on `ghcr.io/puppeteer/puppeteer:latest`. SQLite data persists in a Docker volume (`raindrop-data` mounted at `/app/data`).
 
 ## Architecture
 
-<!-- Overview of the project structure, key modules, data flow -->
+```
+client/                         React SPA (Vite + Tailwind)
+  src/pages/                    SetupPage, PublishPage, ConfirmationPage
+  src/services/                 Thin fetch wrappers for /api/* endpoints
+  src/utils/                    Helpers (imageUtils)
+
+server/                         Node.js/Express backend
+  index.js                      App entry: middleware, sessions, static serving
+  routes/                       API endpoints by domain
+    auth.js                       OAuth flows (Raindrop.io), provider connection tests
+    raindropio.js                 Proxy to Raindrop.io API (tags, bookmarks)
+    venice.js                     Venice AI: LLM proposals + image generation
+    scrape.js                     Article text extraction
+    screenshot.js                 Puppeteer screenshot capture
+    publish.js                    Buffer GraphQL API publishing
+    cleanup.js                    R2 image cleanup scheduler
+    system.js                     System status
+  services/                     Business logic
+    db.js                         SQLite wrapper (settings key-value, post_images tracking)
+    screenshotService.js          Puppeteer quote screenshots with viewport scaling
+    scraperService.js             Headless browser pool (puppeteer-extra + stealth)
+    raindropAuth.js               OAuth token exchange & refresh
+    imageHostService.js           Cloudflare R2 upload/delete
+    cleanupService.js             Background R2 cleanup timer
+    highlighter.js                DOM quote extraction & highlight injection
+```
+
+**Data flow:** React SPA calls `/api/*` -> Express route -> service layer (external APIs, Puppeteer, SQLite) -> JSON response.
+
+**No `.env` file needed.** All API keys and tokens are configured through the Setup Wizard and persisted in SQLite. In dev, Vite runs on :5173 with a proxy; in production, Express serves the built client and runs on port 80.
+
+**Key integrations:**
+- **Raindrop.io** — OAuth 2.0 for bookmark access. Redirect URI: `http://yourdomain/api/auth/raindropio/callback`
+- **Venice AI** — LLM text proposals + image generation (model: `gpt-image-1-5`)
+- **Buffer** — Multi-channel publishing via [GraphQL API](https://developers.buffer.com/reference.html#field-account). Supports simultaneous publishing to LinkedIn, X/Twitter, Mastodon, etc.
+- **Cloudflare R2** — S3-compatible image hosting for screenshots; background cleanup after publish
 
 ## Patterns & Conventions
 
+- **React:** Functional components + hooks only. Props drilling (no Redux/Context). localStorage for persistent UI state.
+- **Server:** ES modules, async/await, Express routing. SQLite via promise-wrapped `sqlite3`.
+- **Styling:** Tailwind CSS with dark mode support.
+- **Error handling:** Try/catch in async functions, user-facing error state in React, JSON error responses from API.
+- **Image pipeline:** Images stay as local base64 data URLs until publish time, then upload to R2 and attach to Buffer.
+- **Venice AI images:** Generated on-demand (user clicks the AI card) to conserve API credits.
+
 ## Key Files
 
-<!-- Important files and their roles -->
+| File | Role |
+|------|------|
+| `client/src/App.jsx` | Main shell, navigation, view routing |
+| `client/src/pages/ConfirmationPage.jsx` | 2x2 image grid, schedule modes, publish flow |
+| `client/src/pages/PublishPage.jsx` | Article queue, AI proposal generation |
+| `client/src/pages/SetupPage.jsx` | BYOK wizard, OAuth, provider tests |
+| `server/index.js` | Express app entry, middleware, session config |
+| `server/routes/publish.js` | Buffer GraphQL multi-channel publishing |
+| `server/services/screenshotService.js` | Puppeteer screenshot generation with viewport scaling |
+| `server/services/db.js` | SQLite settings & image tracking |
+| `Dockerfile` | Multi-stage build (Vite + Puppeteer) |
+| `docker-compose.yml` | Single service, volume-mounted SQLite |
