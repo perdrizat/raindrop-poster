@@ -115,10 +115,9 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
         }
     };
 
-    // Auto-capture screenshot and generate AI image on mount (in parallel)
+    // Auto-capture screenshot on mount
     useEffect(() => {
         captureScreenshot();
-        generateAiImage();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -226,15 +225,24 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
     const isAnyLoading = isCapturing || isGeneratingAi || isUploadingCustom;
 
     // Reusable image option card
-    const ImageCard = ({ id, label, imageSrc, isLoading, error, onRetry, disabled, placeholder }) => {
+    const ImageCard = ({ id, label, imageSrc, isLoading, error, onRetry, disabled, placeholder, onActivate }) => {
         const isSelected = selectedOption === id;
         const hasImage = !!imageSrc;
         const canSelect = hasImage || id === 'cover';
 
+        const handleClick = () => {
+            if (disabled) return;
+            if (canSelect) {
+                setSelectedOption(id);
+            } else if (onActivate && !isLoading) {
+                onActivate();
+            }
+        };
+
         return (
             <div
                 data-testid={`image-option-${id}`}
-                onClick={() => canSelect && !disabled && setSelectedOption(id)}
+                onClick={handleClick}
                 className={`aspect-square rounded-lg border-2 overflow-hidden flex flex-col cursor-pointer transition-all duration-200
                     ${isSelected ? 'ring-2 ring-blue-500 border-blue-500' : 'border-gray-200 dark:border-gray-700'}
                     ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-blue-300 dark:hover:border-blue-600'}
@@ -393,6 +401,8 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
                                 isLoading={isGeneratingAi}
                                 error={aiError}
                                 onRetry={() => generateAiImage()}
+                                onActivate={() => { setSelectedOption('ai'); generateAiImage(); }}
+                                placeholder="Click to generate"
                             />
                             <ImageCard
                                 id="custom"

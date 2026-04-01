@@ -385,9 +385,8 @@ describe('ConfirmationPage', () => {
 
         render(<ConfirmationPage {...defaultProps} />);
 
-        await waitFor(() => {
-            expect(screen.getByTestId('image-option-ai')).toBeInTheDocument();
-        });
+        // Click AI card to trigger on-demand generation
+        fireEvent.click(screen.getByTestId('image-option-ai'));
 
         // Wait for AI image to load
         await waitFor(() => {
@@ -395,7 +394,11 @@ describe('ConfirmationPage', () => {
             expect(aiImg).toBeInTheDocument();
         });
 
-        fireEvent.click(screen.getByTestId('image-option-ai'));
+        // Wait for screenshot to finish too (unblocks publish)
+        await waitFor(() => {
+            expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
+        });
+
         fireEvent.click(screen.getByRole('button', { name: /^Drafts$/i }));
 
         await waitFor(() => {
@@ -494,6 +497,9 @@ describe('ConfirmationPage', () => {
 
         render(<ConfirmationPage {...defaultProps} />);
 
+        // Click AI card to trigger on-demand generation
+        fireEvent.click(screen.getByTestId('image-option-ai'));
+
         await waitFor(() => {
             const aiCard = screen.getByTestId('image-option-ai');
             expect(aiCard.textContent).toMatch(/could not generate/i);
@@ -516,6 +522,77 @@ describe('ConfirmationPage', () => {
         cards.forEach(card => {
             expect(card.className).toMatch(/aspect-square/);
         });
+    });
+
+    // --- Lazy AI Image Generation Tests ---
+
+    it('does not call Venice API on mount', async () => {
+        render(<ConfirmationPage {...defaultProps} />);
+
+        // Wait for screenshot to finish (which does auto-fire on mount)
+        await waitFor(() => {
+            expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
+        });
+
+        // Venice API should NOT have been called
+        const veniceCalls = globalThis.fetch.mock.calls.filter(([url]) => url === '/api/venice/generate-image');
+        expect(veniceCalls).toHaveLength(0);
+    });
+
+    it('AI card shows "Click to generate" placeholder initially', () => {
+        render(<ConfirmationPage {...defaultProps} />);
+
+        const aiCard = screen.getByTestId('image-option-ai');
+        expect(aiCard.textContent).toMatch(/Click to generate/i);
+    });
+
+    it('clicking AI card triggers generation, shows spinner, then image', async () => {
+        render(<ConfirmationPage {...defaultProps} />);
+
+        // AI card should show placeholder
+        const aiCard = screen.getByTestId('image-option-ai');
+        expect(aiCard.textContent).toMatch(/Click to generate/i);
+
+        // Click to trigger generation
+        fireEvent.click(aiCard);
+
+        // Should show spinner
+        await waitFor(() => {
+            expect(screen.getByTestId('image-option-ai').textContent).toMatch(/Loading/i);
+        });
+
+        // Should resolve to generated image
+        await waitFor(() => {
+            const aiImg = screen.getByAltText('AI Generated');
+            expect(aiImg.src).toContain('data:image/png;base64,fakeaiimage');
+        });
+    });
+
+    it('clicking AI card auto-selects the AI option', async () => {
+        render(<ConfirmationPage {...defaultProps} />);
+
+        // Screenshot is selected by default
+        expect(screen.getByTestId('image-option-screenshot').className).toMatch(/ring-blue/);
+
+        // Click AI card
+        fireEvent.click(screen.getByTestId('image-option-ai'));
+
+        // AI should now be selected
+        expect(screen.getByTestId('image-option-ai').className).toMatch(/ring-blue/);
+        expect(screen.getByTestId('image-option-screenshot').className).not.toMatch(/ring-blue/);
+    });
+
+    it('publish buttons are not blocked when AI generation has not been triggered', async () => {
+        render(<ConfirmationPage {...defaultProps} />);
+
+        // Wait for screenshot to load
+        await waitFor(() => {
+            expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
+        });
+
+        // Publish buttons should be enabled even though AI image was never generated
+        const draftsBtn = screen.getByRole('button', { name: /^Drafts$/i });
+        expect(draftsBtn).not.toBeDisabled();
     });
 
     it('custom card shows "Paste or upload" placeholder initially', () => {
@@ -585,11 +662,9 @@ describe('ConfirmationPage', () => {
             expect(ssCard.textContent).toMatch(/could not capture/i);
         });
 
-        // AI card still loads successfully
-        await waitFor(() => {
-            const aiImg = screen.getByAltText('AI Generated');
-            expect(aiImg).toBeInTheDocument();
-        });
+        // AI card shows placeholder (not auto-generated)
+        const aiCard = screen.getByTestId('image-option-ai');
+        expect(aiCard.textContent).toMatch(/Click to generate/i);
 
         // Cover card still shows its image
         const coverImg = screen.getByAltText('Cover');
