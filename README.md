@@ -1,7 +1,5 @@
 # Raindrop Poster
 
-> **Note:** This project is a work in progress (WIP) and is currently being built as an experiment with Antigravity.
-
 Raindrop Poster is a web application designed to streamline the social media workflow for heavy content curators. It provides a simple, consolidated, and mobile-friendly workflow to turn your saved bookmarks in Raindrop.io into engaging, AI-generated social media posts — published directly to your Buffer queue without switching between multiple applications.
 
 ## Quick Start
