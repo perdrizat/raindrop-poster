@@ -47,6 +47,7 @@ describe('screenshotService', () => {
             .mockResolvedValueOnce(undefined);
 
         const result = await captureQuoteScreenshot(
+            null,
             'https://example.com/article',
             'Some important quote text',
             { author: 'Jane Smith', date: '2026-02-27', domain: 'example.com' }
@@ -79,6 +80,7 @@ describe('screenshotService', () => {
             .mockResolvedValueOnce(undefined); // attribution bar injection
 
         const result = await captureQuoteScreenshot(
+            null,
             'https://x.com/jack/status/2027129697092731343?s=20',
             'Some quote text',
             { author: 'Jane Smith', date: '2026-02-27', domain: 'x.com' }
@@ -100,6 +102,7 @@ describe('screenshotService', () => {
             .mockResolvedValueOnce(undefined); // attribution bar injection
 
         const result = await captureQuoteScreenshot(
+            null,
             'https://example.com/article',
             'Nonexistent quote text',
             { author: 'Jane Smith', date: '2026-02-27', domain: 'example.com' }
@@ -110,6 +113,7 @@ describe('screenshotService', () => {
 
     it('should use cover image URL directly when no quote and cover exists', async () => {
         const result = await captureQuoteScreenshot(
+            null,
             'https://example.com/article',
             null,
             { author: 'Jane Smith', date: '2026-02-27', domain: 'example.com' },
@@ -124,10 +128,56 @@ describe('screenshotService', () => {
         mockPage.goto.mockRejectedValueOnce(new Error('Timeout'));
 
         await expect(captureQuoteScreenshot(
+            null,
             'https://bad-url.example.com',
             'Some quote',
             { author: 'Author', date: '2026-01-01', domain: 'example.com' }
         )).rejects.toThrow('Failed to capture screenshot');
+    });
+
+    it('should fall back to live URL when quote not found in local HTML', async () => {
+        mockPage.setContent = vi.fn().mockResolvedValue();
+        mockPage.evaluate
+            .mockResolvedValueOnce({ found: false, rect: null }) // findQuoteInDOM on local HTML — not found
+            .mockResolvedValueOnce({ found: true, rect: { x: 50, y: 200, width: 600, height: 100 } }) // findQuoteInDOM on live URL — found
+            .mockResolvedValueOnce({ x: 0, y: 100, size: 700, totalHeight: 740, barHeight: 40 }) // clip calc
+            .mockResolvedValueOnce(undefined); // attribution bar
+
+        const result = await captureQuoteScreenshot(
+            '<p>No matching quote here</p>',
+            'https://example.com/article',
+            'Some important quote text',
+            { author: 'Jane Smith', date: '2026-02-27', domain: 'example.com' }
+        );
+
+        // Should have tried local HTML first, then fallen back to goto
+        expect(mockPage.setContent).toHaveBeenCalled();
+        expect(mockPage.goto).toHaveBeenCalledWith(
+            'https://example.com/article',
+            expect.objectContaining({ waitUntil: 'networkidle2' })
+        );
+        expect(result).toBeInstanceOf(Buffer);
+    });
+
+    it('should render local HTML via setContent when articleHtml is provided', async () => {
+        mockPage.setContent = vi.fn().mockResolvedValue();
+        mockPage.evaluate
+            .mockResolvedValueOnce({ found: true, rect: { x: 50, y: 200, width: 600, height: 100 } })
+            .mockResolvedValueOnce({ x: 0, y: 100, size: 700, totalHeight: 740, barHeight: 40 })
+            .mockResolvedValueOnce(undefined);
+
+        const articleHtml = '<h1>Test Article</h1><p>Some important quote text here.</p>';
+        const result = await captureQuoteScreenshot(
+            articleHtml,
+            'https://example.com/article',
+            'Some important quote text',
+            { author: 'Jane Smith', date: '2026-02-27', domain: 'example.com' }
+        );
+
+        // Should use setContent instead of goto
+        expect(mockPage.setContent).toHaveBeenCalled();
+        expect(mockPage.goto).not.toHaveBeenCalled();
+        expect(result).toBeInstanceOf(Buffer);
     });
 });
 

@@ -17,8 +17,8 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'Invalid URL format' });
         }
 
-        const text = await scrapeArticle(url);
-        res.json({ text });
+        const { markdown, html } = await scrapeArticle(url);
+        res.json({ markdown, html, text: markdown });
 
     } catch (error) {
         console.error("Scrape route error:", error);

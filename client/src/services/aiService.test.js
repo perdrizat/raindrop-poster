@@ -17,11 +17,15 @@ describe('aiService', () => {
         await expect(generateProposals({}, 'prompt')).rejects.toThrow('Invalid article provided');
     });
 
-    it('should orchestrate scraping and generation API calls and return proposals', async () => {
-        // Mock scrape success
+    it('should orchestrate scraping and generation API calls and return proposals with scrapeData', async () => {
+        // Mock scrape success — new shape with markdown + html
         globalThis.fetch.mockResolvedValueOnce({
             ok: true,
-            json: async () => ({ text: 'Scraped article content.' })
+            json: async () => ({
+                markdown: '# Article\n\nScraped article content.',
+                html: '<h1>Article</h1><p>Scraped article content.</p>',
+                text: '# Article\n\nScraped article content.'
+            })
         });
 
         // Mock generate success
@@ -31,17 +35,20 @@ describe('aiService', () => {
         });
 
         const article = { title: 'Test', link: 'http://test.com', highlight: '' };
-        const proposals = await generateProposals(article, 'custom prompt');
+        const result = await generateProposals(article, 'custom prompt');
 
         expect(globalThis.fetch).toHaveBeenCalledTimes(2);
         expect(globalThis.fetch).toHaveBeenNthCalledWith(1, '/api/scrape', expect.any(Object));
+        // Venice should receive the markdown content
         expect(globalThis.fetch).toHaveBeenNthCalledWith(2, '/api/venice/generate', expect.objectContaining({
-            body: expect.stringContaining('Scraped article content.')
+            body: expect.stringContaining('# Article')
         }));
 
-        expect(proposals).toEqual({
-            proposals: ['Tweet 1', 'Tweet 2', 'Tweet 3'],
-            author: null
+        expect(result.proposals).toEqual(['Tweet 1', 'Tweet 2', 'Tweet 3']);
+        expect(result.author).toBeNull();
+        expect(result.scrapeData).toEqual({
+            markdown: '# Article\n\nScraped article content.',
+            html: '<h1>Article</h1><p>Scraped article content.</p>'
         });
     });
 
@@ -59,16 +66,15 @@ describe('aiService', () => {
         });
 
         const article = { title: 'Test 2', link: 'http://test2.com', highlight: '' };
-        const proposals = await generateProposals(article, 'prompt');
+        const result = await generateProposals(article, 'prompt');
 
         expect(globalThis.fetch).toHaveBeenCalledTimes(2);
         expect(globalThis.fetch).toHaveBeenNthCalledWith(2, '/api/venice/generate', expect.objectContaining({
             body: expect.stringContaining('Text unavailable')
         }));
-        expect(proposals).toEqual({
-            proposals: ['T1', 'T2', 'T3'],
-            author: null
-        });
+        expect(result.proposals).toEqual(['T1', 'T2', 'T3']);
+        expect(result.author).toBeNull();
+        expect(result.scrapeData).toEqual({ markdown: '', html: '' });
     });
 
     it('should throw if generation fails', async () => {

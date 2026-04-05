@@ -1,6 +1,9 @@
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { createPool } from 'generic-pool';
+import { JSDOM } from 'jsdom';
+import { Readability } from '@mozilla/readability';
+import TurndownService from 'turndown';
 
 puppeteer.use(StealthPlugin());
 
@@ -36,9 +39,37 @@ export const acquireBrowser = () => browserPool.acquire();
 export const releaseBrowser = (browser) => browserPool.release(browser);
 export const shutdownPool = async () => { await browserPool.drain(); browserPool.clear(); };
 
+const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
+
 /**
- * Scrapes article text from a URL using Puppeteer.
- * Prefers <article>, falls back to <main>, then <body>.
+ * Extracts article content from raw HTML using Mozilla Readability,
+ * then converts to markdown via Turndown.
+ *
+ * @param {string} rawHtml - Full page HTML
+ * @param {string} url - The page URL (used by Readability for relative link resolution)
+ * @returns {{ markdown: string, html: string } | null}
+ */
+function extractArticle(rawHtml, url) {
+    try {
+        const dom = new JSDOM(rawHtml, { url });
+        const reader = new Readability(dom.window.document);
+        const article = reader.parse();
+        if (!article || !article.content) return null;
+
+        const markdown = turndown.turndown(article.content);
+        return { markdown, html: article.content };
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Scrapes article content from a URL using Puppeteer.
+ * Returns { markdown, html } via Readability extraction.
+ * Falls back to plain text extraction if Readability can't parse the page.
+ *
+ * @param {string} url
+ * @returns {Promise<{ markdown: string, html: string }>}
  */
 export const scrapeArticle = async (url) => {
     // 1. Intercept X/Twitter URLs to bypass headless browser blockers
@@ -55,14 +86,14 @@ export const scrapeArticle = async (url) => {
                 throw new Error(`vxtwitter API returned ${response.status}`);
             }
             const data = await response.json();
-            return data.text || '';
+            return { markdown: data.text || '', html: '' };
         } catch (error) {
             console.error('vxtwitter fallback error:', error.message);
             throw new Error('Failed to scrape the article.');
         }
     }
 
-    // 2. Default Puppeteer fallback
+    // 2. Default Puppeteer path
     const browser = await acquireBrowser();
     let page;
     try {
@@ -70,12 +101,22 @@ export const scrapeArticle = async (url) => {
 
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
 
+        // Grab full page HTML for Readability
+        const rawHtml = await page.content();
+        const extracted = extractArticle(rawHtml, url);
+
+        if (extracted && extracted.markdown.trim().length > 0) {
+            return {
+                markdown: extracted.markdown.substring(0, 50000),
+                html: extracted.html,
+            };
+        }
+
+        // Fallback: plain text extraction (same as before)
         const text = await page.evaluate(() => {
-            // Remove noise elements
             const removeSelectors = 'script, style, nav, footer, header, aside, iframe, noscript';
             document.querySelectorAll(removeSelectors).forEach(el => el.remove());
 
-            // Try article > main > body
             const article = document.querySelector('article');
             if (article && article.textContent.trim().length > 0) {
                 return article.textContent;
@@ -89,13 +130,12 @@ export const scrapeArticle = async (url) => {
             return document.body.textContent;
         });
 
-        // Clean up whitespace and truncate
         const cleanText = text
             .replace(/\s+/g, ' ')
             .replace(/\n+/g, '\n')
             .trim();
 
-        return cleanText.substring(0, 50000);
+        return { markdown: cleanText.substring(0, 50000), html: '' };
     } catch (error) {
         console.error('Scraping error:', error.message);
         throw new Error('Failed to scrape the article.');

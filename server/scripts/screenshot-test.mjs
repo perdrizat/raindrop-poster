@@ -62,7 +62,7 @@
 
 import { captureQuoteScreenshot } from '../services/screenshotService.js';
 import { uploadImage } from '../services/imageHostService.js';
-import { shutdownPool } from '../services/scraperService.js';
+import { scrapeArticle, shutdownPool } from '../services/scraperService.js';
 
 // Enable the full production code path: 8 s wait + dismissPopups + Wayback fallback.
 process.env.NODE_ENV = 'e2e';
@@ -75,31 +75,37 @@ const TEST_CASES = [
         name: 'SlowMist Medium — multi-paragraph quote',
         url: 'https://slowmist.medium.com/the-cat-and-mouse-dilemma-of-vasps-under-compliance-pressure-1255780f65da',
         quote: 'Infrastructure Seizures: Garantex had its servers shut down and faced criminal charges in a joint operation by the United States and Europe.\nComprehensive Sanctions and Blacklisting: Payeer was placed on the EU sanctions list, prohibiting any entity within the European Union from transacting with it.\nOperational Bans: India directly blocked more than 20 platforms, including BingX, LBank, and Poloniex.',
-        attribution: { author: null, date: null, domain: 'slowmist.medium.com' },
+        attribution: { author: "SlowMist", date: "3-25", domain: 'slowmist.medium.com' },
     },
     {
         name: 'X vxtwitter — tweet thread',
         url: 'https://x.com/iang_fc/status/2034408765127053540',
         quote: "The *outcome* of this is a bifurcation. Crypto will fork. It will bifurcate into inside and outside. Then both will fail. Inside will fail bc it's not crypto, it's some digital token shared by a dozen or more companies and that will eventually be broken. Outside will be small, and will be hunted and eventually exterminated like the pest that it is.",
-        attribution: { author: null, date: null, domain: 'x.com' },
+        attribution: { author: "@iang", date: "Dec 25" domain: 'x.com' },
     },
     {
         name: 'Continuations — math-heavy quote',
         url: 'https://continuations.com/more-lazy-employment-thinking-jevons-paradox-edition',
         quote: "Consider a 90% labor savings and now ask how much would units produced have to grow to at least offset this?\n\nX units produced 0.1 human labor / unit = 1 Total labor\n\nX = 1 / 0.1 = 10!\n\nSo at a 90% labor savings from AI you need a 10x demand growth to just break even on labor demand. For many products that's clearly not going to happen. On this ground alone we should reject a simplistic invocation of Jevons paradox.",
-        attribution: { author: 'Albert Wenger', date: null, domain: 'continuations.com' },
+        attribution: { author: 'Albert Wenger', date: "You-Tube", domain: 'continuations.com' },
     },
     {
         name: 'SwissInfo — article behind consent wall',
         url: 'https://www.swissinfo.ch/eng/research-frontiers/ig-nobels-to-move-awards-to-switzerland-due-to-concern-over-us-travel-visas/91073250',
         quote: "But four of the 10 winners last year chose not to travel to Boston for the ceremony. In previous years, the ceremony has taken place at Harvard University, Massachusetts Institute of Technology and Boston University.\n\nThe move comes amid Donald Trump's sweeping crackdown on immigration, in which he has focused on deporting migrants illegally in the US, as well as holders of student and visitor exchange visas.",
-        attribution: { author: null, date: null, domain: 'swissinfo.ch' },
+        attribution: { author: "SwissInfo", date: "2-2", domain: 'swissinfo.ch' },
+    },
+    {
+        name: 'Socket.dev — npm maintainer attacks',
+        url: 'https://socket.dev/blog/attackers-hunting-high-impact-nodejs-maintainers',
+        quote: 'axios was not a one-off target. It was part of a coordinated, scalable attack pattern aimed at high-trust, high-impact open source maintainers',
+        attribution: { author: "Socket Dev", date: "4/4/26", domain: 'socket.dev' },
     },
     {
         name: 'Sherlock xyz — crypto article',
         url: 'https://sherlock.xyz/post/institutional-crypto-adoption-in-2026-whos-actually-moving-in',
         quote: 'Institutional adoption is a balance sheet reality. $123.5 billion in Bitcoin ETF assets. $35.6 billion in tokenized real-world assets. Over $1 billion in daily on-chain settlement by a single bank. Sovereign wealth funds with billion-dollar Bitcoin positions. A consortium of the largest U.S. banks building a stablecoin. Visa and Mastercard running stablecoin settlement infrastructure. The question has shifted from "will institutions adopt crypto?" to "how fast will the infrastructure scale to meet institutional demand?"',
-        attribution: { author: null, date: null, domain: 'sherlock.xyz' },
+        attribution: { author: "Sherlock", date: "2-20-2026", domain: 'sherlock.xyz' },
     },
 ];
 
@@ -117,7 +123,18 @@ async function main() {
     for (const { name, url, quote, attribution } of TEST_CASES) {
         log(`  ▶ ${name}`);
         try {
-            const buffer = await captureQuoteScreenshot(url, quote, attribution);
+            // Scrape first, then screenshot with local HTML
+            log(`    scraping...`);
+            let articleHtml = null;
+            try {
+                const scrapeResult = await scrapeArticle(url);
+                articleHtml = scrapeResult.html || null;
+                log(`    scraped (${(scrapeResult.markdown?.length || 0)} chars markdown)`);
+            } catch (e) {
+                log(`    scrape failed, falling back to live URL: ${e.message}`);
+            }
+
+            const buffer = await captureQuoteScreenshot(articleHtml, url, quote, attribution);
 
             if (!Buffer.isBuffer(buffer) || buffer.length < 10000) {
                 throw new Error(`Buffer too small (${Buffer.isBuffer(buffer) ? buffer.length : typeof buffer} bytes)`);

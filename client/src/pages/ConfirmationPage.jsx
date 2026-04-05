@@ -66,6 +66,7 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
                     date: date,
                     domain: domain,
                     coverImageUrl: article.cover || null,
+                    articleHtml: article.scrapeData?.html || null,
                 }),
             });
 

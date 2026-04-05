@@ -152,6 +152,22 @@ describe('ConfirmationPage', () => {
         });
     });
 
+    it('sends articleHtml in screenshot request when scrapeData is available', async () => {
+        const articleWithScrapeData = {
+            ...defaultProps.article,
+            highlight: 'Some quote',
+            scrapeData: { markdown: '# Article', html: '<h1>Article</h1><p>Content</p>' }
+        };
+
+        render(<ConfirmationPage {...defaultProps} article={articleWithScrapeData} />);
+
+        await waitFor(() => {
+            expect(globalThis.fetch).toHaveBeenCalledWith('/api/screenshot', expect.objectContaining({
+                body: expect.stringContaining('"articleHtml":"<h1>Article</h1><p>Content</p>"')
+            }));
+        });
+    });
+
     it('allows editing the quote and triggers a new screenshot capture on regenerate click', async () => {
         render(<ConfirmationPage {...defaultProps} article={{ ...defaultProps.article, highlight: 'Initial quote' }} />);
 

@@ -16,6 +16,7 @@ const PublishPage = ({ selectedTag, onSelectProposal }) => {
     const [generationError, setGenerationError] = useState(null);
     const [authorOverride, setAuthorOverride] = useState(null);
     const [customProposal, setCustomProposal] = useState('');
+    const [scrapeData, setScrapeData] = useState(null);
 
     const currentArticle = articles.length > 0 && currentIndex >= 0 && currentIndex < articles.length
         ? articles[currentIndex]
@@ -35,6 +36,7 @@ const PublishPage = ({ selectedTag, onSelectProposal }) => {
             const results = await generateProposals(article, customPrompt);
             setProposals(results.proposals || []);
             setExtractedAuthor(results.author || null);
+            setScrapeData(results.scrapeData || null);
         } catch (error) {
             setGenerationError(error.message || 'Failed to generate proposals.');
         } finally {
@@ -222,7 +224,7 @@ const PublishPage = ({ selectedTag, onSelectProposal }) => {
                                             {proposal.length} characters
                                         </span>
                                         <button
-                                            onClick={() => onSelectProposal(proposal, { ...currentArticle, extractedAuthor: authorOverride || extractedAuthor })}
+                                            onClick={() => onSelectProposal(proposal, { ...currentArticle, extractedAuthor: authorOverride || extractedAuthor, scrapeData })}
                                             className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
                                         >
                                             Review & Publish

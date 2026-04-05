@@ -5,7 +5,7 @@ const router = express.Router();
 
 router.post('/', async (req, res) => {
     try {
-        const { url, quoteText, author, date, domain: reqDomain, coverImageUrl } = req.body;
+        const { url, quoteText, author, date, domain: reqDomain, coverImageUrl, articleHtml } = req.body;
 
         if (!url) {
             return res.status(400).json({ error: 'URL is required' });
@@ -25,6 +25,7 @@ router.post('/', async (req, res) => {
 
         console.log(`Screenshot → ${url}${quoteText ? ` quote="${quoteText.slice(0, 50)}..."` : ''}`);
         const result = await captureQuoteScreenshot(
+            articleHtml || null,
             url,
             quoteText || null,
             attribution,

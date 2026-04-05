@@ -128,7 +128,7 @@ describe('PublishPage', () => {
 
     it('displays generated proposals successfully', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
-        generateProposals.mockResolvedValueOnce({ proposals: ['First awesome tweet!', 'Second highly engaging thread.', 'Third short hook.'], author: null });
+        generateProposals.mockResolvedValueOnce({ proposals: ['First awesome tweet!', 'Second highly engaging thread.', 'Third short hook.'], author: null, scrapeData: { markdown: '', html: '' } });
 
         render(<PublishPage selectedTag="testing" onBack={() => { }} />);
 
@@ -171,9 +171,10 @@ describe('PublishPage', () => {
         });
     });
 
-    it('allows overriding the author and passes it to onSelectProposal', async () => {
+    it('allows overriding the author and passes scrapeData to onSelectProposal', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
-        generateProposals.mockResolvedValueOnce({ proposals: ['Tweet 1'], author: 'Jane Doe' });
+        const mockScrapeData = { markdown: '# Test\n\nContent', html: '<h1>Test</h1><p>Content</p>' };
+        generateProposals.mockResolvedValueOnce({ proposals: ['Tweet 1'], author: 'Jane Doe', scrapeData: mockScrapeData });
         const onSelect = vi.fn();
         const user = userEvent.setup();
 
@@ -194,7 +195,10 @@ describe('PublishPage', () => {
 
         expect(onSelect).toHaveBeenCalledWith(
             'Tweet 1',
-            expect.objectContaining({ extractedAuthor: 'John Smith' })
+            expect.objectContaining({
+                extractedAuthor: 'John Smith',
+                scrapeData: mockScrapeData
+            })
         );
     });
 

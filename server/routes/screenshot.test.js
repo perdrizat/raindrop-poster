@@ -44,6 +44,7 @@ describe('POST /api/screenshot', () => {
         expect(res.body.imageData).toMatch(/^data:image\/png;base64,/);
         expect(res.body.screenshotUrl).toBeUndefined();
         expect(captureQuoteScreenshot).toHaveBeenCalledWith(
+            null,
             'https://example.com/article',
             'Important quote',
             expect.objectContaining({ author: 'Jane Smith', domain: 'example.com' }),
@@ -89,6 +90,7 @@ describe('POST /api/screenshot', () => {
             .send({ url: 'https://www.reuters.com/article/123' });
 
         expect(captureQuoteScreenshot).toHaveBeenCalledWith(
+            null,
             'https://www.reuters.com/article/123',
             null,
             expect.objectContaining({ domain: 'reuters.com' }),
@@ -104,6 +106,7 @@ describe('POST /api/screenshot', () => {
             .send({ url: 'https://example.com/article', domain: 'custom-source.org' });
 
         expect(captureQuoteScreenshot).toHaveBeenCalledWith(
+            null,
             'https://example.com/article',
             null,
             expect.objectContaining({ domain: 'custom-source.org' }),
@@ -119,6 +122,7 @@ describe('POST /api/screenshot', () => {
             .send({ url: 'https://example.com' });
 
         expect(captureQuoteScreenshot).toHaveBeenCalledWith(
+            null,
             'https://example.com',
             null,
             expect.objectContaining({ author: null, date: null }),
@@ -137,10 +141,32 @@ describe('POST /api/screenshot', () => {
             });
 
         expect(captureQuoteScreenshot).toHaveBeenCalledWith(
+            null,
             'https://example.com',
             null,
             expect.any(Object),
             'https://cdn.com/cover.jpg'
+        );
+    });
+
+    it('should pass articleHtml to captureQuoteScreenshot when provided', async () => {
+        captureQuoteScreenshot.mockResolvedValueOnce(Buffer.from('png'));
+
+        const articleHtml = '<h1>Test</h1><p>Content</p>';
+        await request(app)
+            .post('/api/screenshot')
+            .send({
+                url: 'https://example.com/article',
+                quoteText: 'Content',
+                articleHtml
+            });
+
+        expect(captureQuoteScreenshot).toHaveBeenCalledWith(
+            articleHtml,
+            'https://example.com/article',
+            'Content',
+            expect.any(Object),
+            undefined
         );
     });
 
@@ -152,6 +178,7 @@ describe('POST /api/screenshot', () => {
             .send({ url: 'not-a-valid-url' });
 
         expect(captureQuoteScreenshot).toHaveBeenCalledWith(
+            null,
             'not-a-valid-url',
             null,
             expect.objectContaining({ domain: '' }),

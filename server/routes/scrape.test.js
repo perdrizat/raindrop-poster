@@ -35,15 +35,20 @@ describe('Scrape Routes', () => {
         expect(res.body).toEqual({ error: 'Invalid URL format' });
     });
 
-    it('should successfully scrape and return text', async () => {
-        scraperService.scrapeArticle.mockResolvedValueOnce('This is the scraped text content.');
+    it('should return { markdown, html, text } from scrape', async () => {
+        scraperService.scrapeArticle.mockResolvedValueOnce({
+            markdown: '# Article\n\nScraped content.',
+            html: '<h1>Article</h1><p>Scraped content.</p>'
+        });
 
         const res = await request(app)
             .post('/api/scrape')
             .send({ url: 'https://example.com/article' });
 
         expect(res.status).toBe(200);
-        expect(res.body).toEqual({ text: 'This is the scraped text content.' });
+        expect(res.body.markdown).toBe('# Article\n\nScraped content.');
+        expect(res.body.html).toBe('<h1>Article</h1><p>Scraped content.</p>');
+        expect(res.body.text).toBe('# Article\n\nScraped content.');
         expect(scraperService.scrapeArticle).toHaveBeenCalledWith('https://example.com/article');
     });
 

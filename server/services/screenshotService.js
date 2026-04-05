@@ -2,16 +2,48 @@ import { acquireBrowser, releaseBrowser } from './scraperService.js';
 import { findQuoteInDOM } from './highlighter.js';
 
 /**
+ * Wraps article HTML in a styled shell for local rendering.
+ */
+function wrapArticleHtml(articleHtml) {
+    return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px; line-height: 1.7; color: #1a1a1a; background: #fff;
+    padding: 24px 20px; max-width: 390px;
+  }
+  h1, h2, h3, h4, h5, h6 { margin: 1em 0 0.5em; line-height: 1.3; }
+  h1 { font-size: 1.6em; } h2 { font-size: 1.3em; } h3 { font-size: 1.1em; }
+  p { margin: 0.8em 0; }
+  img { max-width: 100%; height: auto; display: block; margin: 1em 0; }
+  blockquote { border-left: 3px solid #ccc; padding-left: 16px; margin: 1em 0; color: #555; }
+  a { color: #1a73e8; text-decoration: none; }
+  pre, code { font-family: monospace; font-size: 0.9em; background: #f5f5f5; padding: 2px 4px; border-radius: 3px; }
+  pre { padding: 12px; overflow-x: auto; margin: 1em 0; }
+  ul, ol { padding-left: 1.5em; margin: 0.8em 0; }
+  figure { margin: 1em 0; }
+  figcaption { font-size: 0.85em; color: #666; margin-top: 0.5em; }
+</style></head><body>${articleHtml}</body></html>`;
+}
+
+/**
  * Captures a square screenshot of a quote within an article.
  * Highlights the quote with a yellow marker and adds an attribution bar.
  *
- * @param {string} articleUrl - The article URL to screenshot
+ * When articleHtml is provided, renders it locally via page.setContent() —
+ * no external page load, no popup dismissal, no archive fallbacks needed.
+ * Falls back to loading the live URL when articleHtml is null.
+ *
+ * @param {string|null} articleHtml - Pre-scraped article HTML (from Readability), or null to load live URL
+ * @param {string} articleUrl - The article URL (used for live-URL fallback and URL rewriting)
  * @param {string|null} quoteText - The quote text to find and highlight
  * @param {object} attribution - { author, date, domain }
  * @param {string|null} coverImageUrl - Fallback cover image URL from Raindrop
  * @returns {Promise<Buffer|string>} PNG buffer, or a cover URL string if no quote and cover exists
  */
-export const captureQuoteScreenshot = async (articleUrl, quoteText, attribution, coverImageUrl = null) => {
+export const captureQuoteScreenshot = async (articleHtml, articleUrl, quoteText, attribution, coverImageUrl = null) => {
     // Shortcut: no quote text and cover image available → use cover directly
     if (!quoteText && coverImageUrl) {
         return coverImageUrl;
@@ -30,155 +62,151 @@ export const captureQuoteScreenshot = async (articleUrl, quoteText, attribution,
             deviceScaleFactor: 2,
         });
 
-        // removed forced mobile UserAgent
+        let findResult;
 
-        let targetUrl = articleUrl;
-        const twitterRegex = /https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]+)\/status\/([0-9]+)/i;
-        const match = articleUrl.match(twitterRegex);
-        if (match) {
-            targetUrl = `https://vxtwitter.com/${match[1]}/status/${match[2]}`;
-        }
+        if (articleHtml) {
+            // ── Local HTML path: render pre-scraped content, no network needed ──
+            const styledHtml = wrapArticleHtml(articleHtml);
+            await page.setContent(styledHtml, { waitUntil: 'load' });
 
-        // SSRN is extremely strict with Cloudflare bot protection. Route to Wayback Machine
-        if (articleUrl.includes('ssrn.com')) {
-            try {
-                const parsedUrl = new URL(articleUrl);
-                const abstractId = parsedUrl.searchParams.get('abstract_id');
-                // Strip tracking params because Wayback Machine only archives the base URL
-                const cleanUrl = `https://papers.ssrn.com/sol3/papers.cfm?abstract_id=${abstractId}`;
-                targetUrl = `https://web.archive.org/web/2/${cleanUrl}`;
-            } catch (err) {
-                targetUrl = `https://web.archive.org/web/2/${articleUrl}`;
+            findResult = await page.evaluate(findQuoteInDOM, quoteText);
+
+            if (process.env.DEBUG_HIGHLIGHT === 'true') {
+                console.log("findResult (local HTML):", findResult);
+            }
+
+            if (!findResult.found) {
+                console.warn('[screenshot] Quote not found in local HTML — falling back to live URL');
             }
         }
 
+        if (!articleHtml || !findResult.found) {
+            // ── Live URL path: load the page, dismiss popups, try archive fallbacks ──
 
-        // Auto-accept Usercentrics consent the moment the UC_UI / __ucCmp API is
-        // assigned by the CMP script, and also watch for the shadow DOM button via
-        // MutationObserver. This runs before any page scripts (evaluateOnNewDocument)
-        // so consent is granted before the article body is conditionally loaded.
-        await page.evaluateOnNewDocument(() => {
-            let _UC_UI, _ucCmp;
-            const autoAccept = (api) => {
-                const run = () => { try { api.acceptAllConsents(); } catch (e) {} };
-                setTimeout(run, 50);
-                setTimeout(run, 500);
-                setTimeout(run, 1500);
-            };
-            try {
-                Object.defineProperty(window, 'UC_UI', {
-                    configurable: true,
-                    get: () => _UC_UI,
-                    set: (val) => { _UC_UI = val; autoAccept(val); }
-                });
-                Object.defineProperty(window, '__ucCmp', {
-                    configurable: true,
-                    get: () => _ucCmp,
-                    set: (val) => { _ucCmp = val; autoAccept(val); }
-                });
-            } catch (e) {}
-
-            // Fallback: watch for shadow-DOM accept button and click it immediately
-            try {
-                const obs = new MutationObserver(() => {
-                    for (const el of document.querySelectorAll('*')) {
-                        if (!el.shadowRoot) continue;
-                        const btn = el.shadowRoot.querySelector(
-                            '.uc-accept-button, button[data-action-type="accept"]'
-                        );
-                        if (btn) { btn.click(); obs.disconnect(); return; }
-                    }
-                });
-                obs.observe(document.documentElement, { childList: true, subtree: true });
-            } catch (e) {}
-        });
-
-        await page.setRequestInterception(true);
-        page.on('request', req => {
-            const reqUrl = req.url();
-            try {
-                const host = new URL(reqUrl).hostname;
-                if (host === 'papers.ssrn.com' || host === 'ssrn.com') {
-                    // Prevent escaping the web archive to the live Cloudflare site
-                    req.abort();
-                    return;
-                }
-            } catch (e) { }
-
-            if (reqUrl.includes('wombat.js') || reqUrl.includes('banner.js')) {
-                // Wombat overrides Function.apply and causes Maximum call stack size exceeded during page.evaluate
-                req.abort();
-            } else {
-                req.continue();
+            let targetUrl = articleUrl;
+            const twitterRegex = /https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]+)\/status\/([0-9]+)/i;
+            const match = articleUrl.match(twitterRegex);
+            if (match) {
+                targetUrl = `https://vxtwitter.com/${match[1]}/status/${match[2]}`;
             }
-        });
 
-        // networkidle2 ensures JS-rendered article bodies (React/Next.js sites) are
-        // fully painted before we search. If the site never settles (long-polling,
-        // websockets), the timeout is caught and we proceed with whatever is loaded.
-        await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 })
-            .catch(e => { if (!e.message.includes('timeout')) throw e; });
-
-        if (process.env.NODE_ENV !== 'test') {
-            // Resize to a normal viewport height for popup dismissal.
-            // Our 8000 px tall viewport pushes position:fixed consent dialogs
-            // to y ≈ 8000, putting them out of range for page.mouse.click().
-            // A normal height keeps them within reachable coordinates.
-            await page.setViewport({ width: 390, height: 900, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
-
-            // Two-phase dismissal: catch overlays that appear immediately (2 s)
-            // and those that appear with a delay (another 6 s).
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            await dismissPopups(page);
-            await new Promise(resolve => setTimeout(resolve, 6000));
-            await dismissPopups(page);
-
-            // Restore tall viewport for full-page screenshot capture
-            await page.setViewport({ width: 390, height: 8000, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
-            await new Promise(resolve => setTimeout(resolve, 500));
-        }
-
-        // Step 1: Find and highlight the quote
-        let findResult = await page.evaluate(findQuoteInDOM, quoteText);
-
-        if (process.env.DEBUG_HIGHLIGHT === 'true') {
-            console.log("findResult:", findResult);
-        }
-
-        // Archive fallback chain: if the quote wasn't found (e.g. consent wall blocked
-        // the article body), retry via a series of fallbacks.
-        // Skip if we're already on an archive or vxtwitter URL.
-        const isAlreadyArchive = targetUrl.includes('web.archive.org')
-            || targetUrl.includes('archive.ph')
-            || targetUrl.includes('vxtwitter.com')
-            || targetUrl.includes('freedium.cfd');
-
-        if (!findResult.found && !isAlreadyArchive) {
-            const archiveFallbacks = [
-                // Medium-specific: freedium.cfd bypasses login/paywall
-                ...(/medium\.com\//.test(articleUrl)
-                    ? [{ name: 'freedium.cfd', url: `https://freedium.cfd/${articleUrl}` }]
-                    : []),
-                { name: 'archive.ph',      url: `https://archive.ph/newest/${articleUrl}` },
-                { name: 'Wayback Machine', url: `https://web.archive.org/web/2/${articleUrl}` },
-            ];
-
-            for (const fallback of archiveFallbacks) {
-                if (findResult.found) break;
+            // SSRN is extremely strict with Cloudflare bot protection. Route to Wayback Machine
+            if (articleUrl.includes('ssrn.com')) {
                 try {
-                    console.warn(`[screenshot] Quote not found — retrying via ${fallback.name}`);
-                    await page.goto(fallback.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-                    if (process.env.NODE_ENV !== 'test') {
-                        await new Promise(resolve => setTimeout(resolve, 5000));
-                        await dismissPopups(page);
-                        await hideArchiveToolbars(page);
+                    const parsedUrl = new URL(articleUrl);
+                    const abstractId = parsedUrl.searchParams.get('abstract_id');
+                    const cleanUrl = `https://papers.ssrn.com/sol3/papers.cfm?abstract_id=${abstractId}`;
+                    targetUrl = `https://web.archive.org/web/2/${cleanUrl}`;
+                } catch (err) {
+                    targetUrl = `https://web.archive.org/web/2/${articleUrl}`;
+                }
+            }
+
+            // Auto-accept Usercentrics consent
+            await page.evaluateOnNewDocument(() => {
+                let _UC_UI, _ucCmp;
+                const autoAccept = (api) => {
+                    const run = () => { try { api.acceptAllConsents(); } catch (e) {} };
+                    setTimeout(run, 50);
+                    setTimeout(run, 500);
+                    setTimeout(run, 1500);
+                };
+                try {
+                    Object.defineProperty(window, 'UC_UI', {
+                        configurable: true,
+                        get: () => _UC_UI,
+                        set: (val) => { _UC_UI = val; autoAccept(val); }
+                    });
+                    Object.defineProperty(window, '__ucCmp', {
+                        configurable: true,
+                        get: () => _ucCmp,
+                        set: (val) => { _ucCmp = val; autoAccept(val); }
+                    });
+                } catch (e) {}
+
+                try {
+                    const obs = new MutationObserver(() => {
+                        for (const el of document.querySelectorAll('*')) {
+                            if (!el.shadowRoot) continue;
+                            const btn = el.shadowRoot.querySelector(
+                                '.uc-accept-button, button[data-action-type="accept"]'
+                            );
+                            if (btn) { btn.click(); obs.disconnect(); return; }
+                        }
+                    });
+                    obs.observe(document.documentElement, { childList: true, subtree: true });
+                } catch (e) {}
+            });
+
+            await page.setRequestInterception(true);
+            page.on('request', req => {
+                const reqUrl = req.url();
+                try {
+                    const host = new URL(reqUrl).hostname;
+                    if (host === 'papers.ssrn.com' || host === 'ssrn.com') {
+                        req.abort();
+                        return;
                     }
-                    findResult = await page.evaluate(findQuoteInDOM, quoteText);
-                    if (process.env.DEBUG_HIGHLIGHT === 'true') {
-                        console.log(`findResult (${fallback.name}):`, findResult);
+                } catch (e) { }
+
+                if (reqUrl.includes('wombat.js') || reqUrl.includes('banner.js')) {
+                    req.abort();
+                } else {
+                    req.continue();
+                }
+            });
+
+            await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 })
+                .catch(e => { if (!e.message.includes('timeout')) throw e; });
+
+            if (process.env.NODE_ENV !== 'test') {
+                await page.setViewport({ width: 390, height: 900, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                await dismissPopups(page);
+                await new Promise(resolve => setTimeout(resolve, 6000));
+                await dismissPopups(page);
+                await page.setViewport({ width: 390, height: 8000, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+
+            findResult = await page.evaluate(findQuoteInDOM, quoteText);
+
+            if (process.env.DEBUG_HIGHLIGHT === 'true') {
+                console.log("findResult:", findResult);
+            }
+
+            // Archive fallback chain
+            const isAlreadyArchive = targetUrl.includes('web.archive.org')
+                || targetUrl.includes('archive.ph')
+                || targetUrl.includes('vxtwitter.com')
+                || targetUrl.includes('freedium.cfd');
+
+            if (!findResult.found && !isAlreadyArchive) {
+                const archiveFallbacks = [
+                    ...(/medium\.com\//.test(articleUrl)
+                        ? [{ name: 'freedium.cfd', url: `https://freedium.cfd/${articleUrl}` }]
+                        : []),
+                    { name: 'archive.ph',      url: `https://archive.ph/newest/${articleUrl}` },
+                    { name: 'Wayback Machine', url: `https://web.archive.org/web/2/${articleUrl}` },
+                ];
+
+                for (const fallback of archiveFallbacks) {
+                    if (findResult.found) break;
+                    try {
+                        console.warn(`[screenshot] Quote not found — retrying via ${fallback.name}`);
+                        await page.goto(fallback.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+                        if (process.env.NODE_ENV !== 'test') {
+                            await new Promise(resolve => setTimeout(resolve, 5000));
+                            await dismissPopups(page);
+                            await hideArchiveToolbars(page);
+                        }
+                        findResult = await page.evaluate(findQuoteInDOM, quoteText);
+                        if (process.env.DEBUG_HIGHLIGHT === 'true') {
+                            console.log(`findResult (${fallback.name}):`, findResult);
+                        }
+                    } catch (e) {
+                        console.warn(`[screenshot] ${fallback.name} fallback failed: ${e.message}`);
                     }
-                } catch (e) {
-                    console.warn(`[screenshot] ${fallback.name} fallback failed: ${e.message}`);
                 }
             }
         }
