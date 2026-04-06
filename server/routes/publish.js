@@ -26,6 +26,35 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'No target channels selected for Buffer.' });
         }
 
+        // Fetch channel metadata to enforce per-platform character limits before posting
+        const CHAR_LIMITS = { bluesky: 300, mastodon: 500 };
+        const channelsQuery = `
+            query GetChannels($input: ChannelsInput!) {
+                channels(input: $input) { id, service }
+            }
+        `;
+        const channelsRes = await axios.post('https://api.buffer.com/1/graphql', {
+            query: channelsQuery,
+            variables: { input: { organizationId: bufferProfileId } }
+        }, {
+            headers: { 'Authorization': `Bearer ${bufferAccessToken}`, 'Content-Type': 'application/json' }
+        });
+        const allChannels = channelsRes.data?.data?.channels || [];
+        const channelServiceMap = Object.fromEntries(allChannels.map(ch => [ch.id, ch.service]));
+
+        // Pre-validate text length against all target channels
+        const violations = [];
+        for (const channelId of targetChannels) {
+            const service = channelServiceMap[channelId];
+            if (service && CHAR_LIMITS[service] && text.length > CHAR_LIMITS[service]) {
+                const label = service.charAt(0).toUpperCase() + service.slice(1);
+                violations.push(`${label} posts cannot exceed ${CHAR_LIMITS[service]} characters (got ${text.length})`);
+            }
+        }
+        if (violations.length > 0) {
+            return res.status(400).json({ error: violations.join('; ') });
+        }
+
         const query = `
                 mutation CreatePost($input: CreatePostInput!) {
                     createPost(input: $input) {
@@ -130,7 +159,7 @@ router.post('/', async (req, res) => {
                 }
             } catch (e) {
                 console.error(`Error posting to channel ${channelId}:`, e.message);
-                errors.push(`Channel ${channelId} threw an exception.`);
+                errors.push(`Channel ${channelId}: ${e.message}`);
             }
         }
 

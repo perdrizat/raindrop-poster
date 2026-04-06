@@ -81,7 +81,7 @@ const TEST_CASES = [
         name: 'X vxtwitter — tweet thread',
         url: 'https://x.com/iang_fc/status/2034408765127053540',
         quote: "The *outcome* of this is a bifurcation. Crypto will fork. It will bifurcate into inside and outside. Then both will fail. Inside will fail bc it's not crypto, it's some digital token shared by a dozen or more companies and that will eventually be broken. Outside will be small, and will be hunted and eventually exterminated like the pest that it is.",
-        attribution: { author: "@iang", date: "Dec 25" domain: 'x.com' },
+        attribution: { author: "@iang", date: "Dec 25", domain: 'x.com' },
     },
     {
         name: 'Continuations — math-heavy quote',

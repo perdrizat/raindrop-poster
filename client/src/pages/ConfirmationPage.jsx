@@ -45,8 +45,40 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
 
     const destination = 'Buffer';
     const destinationId = 'buffer';
-    const bufferChannels = loadSettings().bufferChannels || [];
+    const rawChannels = loadSettings().bufferChannels || [];
+    // Support both legacy (string IDs) and new (channel objects) formats
+    const bufferChannelObjects = rawChannels.map(ch => typeof ch === 'string' ? { id: ch } : ch);
+    const bufferChannelIds = bufferChannelObjects.map(ch => ch.id);
     const prevCaptureRef = useRef('');
+
+    // Estimate the full post length (postContent + URL + attribution) for char limit checks.
+    // Must mirror the fullText logic in handlePublish so the check matches what Buffer receives.
+    const { imageData: selImageData, coverUrl: selCoverUrl } = (() => {
+        switch (selectedOption) {
+            case 'cover': return { imageData: null, coverUrl: coverUrl };
+            case 'screenshot': return { imageData: screenshotData, coverUrl: null };
+            case 'ai': return { imageData: aiImageData, coverUrl: null };
+            case 'custom': return { imageData: customImageData, coverUrl: null };
+            default: return { imageData: null, coverUrl: null };
+        }
+    })();
+    const hasSelectedImage = !!(selImageData || selCoverUrl);
+    const estimatedFullText = hasSelectedImage
+        ? `${postContent}\n\n${article.link}`
+        : (() => {
+            const attrAuthor = author || article.extractedAuthor || article.author;
+            const fullQuote = quote || article.title;
+            const attr = attrAuthor ? `Says ${attrAuthor}: "${fullQuote}"` : `"${fullQuote}"`;
+            return `${postContent}\n\n${attr}\n\nvia ${article.link}`;
+        })();
+
+    // Character limit warnings per platform
+    const CHAR_LIMITS = { bluesky: 300, mastodon: 500 };
+    const charWarnings = bufferChannelObjects
+        .filter(ch => ch.service && CHAR_LIMITS[ch.service] && estimatedFullText.length > CHAR_LIMITS[ch.service])
+        .map(ch => ({ service: ch.service, limit: CHAR_LIMITS[ch.service] }))
+        // dedupe by service
+        .filter((w, i, arr) => arr.findIndex(x => x.service === w.service) === i);
 
     const captureScreenshot = async (force = false) => {
         const captureKey = `${article.link}-${quote}-${author}-${date}-${domain}`;
@@ -202,7 +234,7 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
                 const attribution = attributionAuthor ? `Says ${attributionAuthor}: "${fullQuote}"` : `"${fullQuote}"`;
                 fullText = `${postContent}\n\n${attribution}\n\nvia ${article.link}`;
             }
-            const result = await publishPost(fullText, article.link, { imageData, coverUrl: publishCoverUrl }, destinationId, bufferChannels, modeToUse);
+            const result = await publishPost(fullText, article.link, { imageData, coverUrl: publishCoverUrl }, destinationId, bufferChannelIds, modeToUse);
             setPublishSuccessData(result);
 
             const settings = loadSettings();
@@ -224,6 +256,7 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
     };
 
     const isAnyLoading = isCapturing || isGeneratingAi || isUploadingCustom;
+    const hasCharLimitViolation = charWarnings.length > 0;
 
     // Reusable image option card
     const ImageCard = ({ id, label, imageSrc, isLoading, error, onRetry, disabled, placeholder, onActivate }) => {
@@ -308,6 +341,15 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
                             <span>{postContent.length} characters</span>
                             <a href={article.link} target="_blank" rel="noopener noreferrer" className="text-blue-500 dark:text-blue-400 hover:underline truncate max-w-[60%]">{article.link}</a>
                         </div>
+                        {charWarnings.length > 0 && (
+                            <div className="mt-2 pl-8 space-y-1">
+                                {charWarnings.map(w => (
+                                    <p key={w.service} className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                                        Full post ({estimatedFullText.length} chars) exceeds {w.service.charAt(0).toUpperCase() + w.service.slice(1)}'s {w.limit}-character limit
+                                    </p>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     {/* Quote Text (Editable) */}
@@ -457,28 +499,28 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
                         <div className="flex flex-wrap items-center gap-2">
                             <button
                                 onClick={() => handlePublish('now')}
-                                disabled={isPublishing || isAnyLoading}
+                                disabled={isPublishing || isAnyLoading || hasCharLimitViolation}
                                 className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-transparent text-sm font-medium text-white shadow-sm transition-all duration-200 bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:opacity-70 disabled:cursor-not-allowed"
                             >
                                 {isPublishing && bufferMode === 'now' ? '...' : 'Now'}
                             </button>
                             <button
                                 onClick={() => handlePublish('prioritize')}
-                                disabled={isPublishing || isAnyLoading}
+                                disabled={isPublishing || isAnyLoading || hasCharLimitViolation}
                                 className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-transparent text-sm font-medium text-white shadow-sm transition-all duration-200 bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:opacity-70 disabled:cursor-not-allowed"
                             >
                                 {isPublishing && bufferMode === 'prioritize' ? '...' : 'Prioritize'}
                             </button>
                             <button
                                 onClick={() => handlePublish('next')}
-                                disabled={isPublishing || isAnyLoading}
+                                disabled={isPublishing || isAnyLoading || hasCharLimitViolation}
                                 className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
                             >
                                 {isPublishing && bufferMode === 'next' ? '...' : 'Next Available'}
                             </button>
                             <button
                                 onClick={() => handlePublish('draft')}
-                                disabled={isPublishing || isAnyLoading}
+                                disabled={isPublishing || isAnyLoading || hasCharLimitViolation}
                                 className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
                             >
                                 {isPublishing && bufferMode === 'draft' ? '...' : 'Drafts'}

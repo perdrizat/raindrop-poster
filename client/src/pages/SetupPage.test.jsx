@@ -313,6 +313,6 @@ describe('SetupPage against REAL backend', () => {
         });
 
         const saved = JSON.parse(window.localStorage.getItem('raindrop_publisher_settings'));
-        expect(saved.bufferChannels).toContain('456');
+        expect(saved.bufferChannels).toContainEqual(expect.objectContaining({ id: '456', service: 'linkedin' }));
     });
 });

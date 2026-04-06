@@ -618,6 +618,168 @@ describe('ConfirmationPage', () => {
         expect(customCard.textContent).toMatch(/Paste or upload/i);
     });
 
+    // --- Character limit warning tests ---
+
+    it('shows Bluesky character limit warning when post text exceeds 300 chars', async () => {
+        loadSettings.mockReturnValue({
+            publishDestination: 'buffer',
+            bufferChannels: [{ id: 'bsky-1', service: 'bluesky', name: 'my-handle' }],
+            selectedTag: 'to-tweet',
+        });
+
+        const longProposal = 'A'.repeat(301);
+        render(<ConfirmationPage {...defaultProps} proposal={longProposal} />);
+
+        await waitFor(() => {
+            expect(screen.getByText(/exceeds Bluesky.*300/i)).toBeInTheDocument();
+        });
+    });
+
+    it('shows Mastodon character limit warning when post text exceeds 500 chars', async () => {
+        loadSettings.mockReturnValue({
+            publishDestination: 'buffer',
+            bufferChannels: [{ id: 'masto-1', service: 'mastodon', name: 'my-instance' }],
+            selectedTag: 'to-tweet',
+        });
+
+        const longProposal = 'A'.repeat(501);
+        render(<ConfirmationPage {...defaultProps} proposal={longProposal} />);
+
+        await waitFor(() => {
+            expect(screen.getByText(/exceeds Mastodon.*500/i)).toBeInTheDocument();
+        });
+    });
+
+    it('shows both warnings when both platforms are selected and text is long enough', async () => {
+        loadSettings.mockReturnValue({
+            publishDestination: 'buffer',
+            bufferChannels: [
+                { id: 'bsky-1', service: 'bluesky', name: 'my-handle' },
+                { id: 'masto-1', service: 'mastodon', name: 'my-instance' },
+            ],
+            selectedTag: 'to-tweet',
+        });
+
+        const longProposal = 'A'.repeat(501);
+        render(<ConfirmationPage {...defaultProps} proposal={longProposal} />);
+
+        await waitFor(() => {
+            expect(screen.getByText(/exceeds Bluesky.*300/i)).toBeInTheDocument();
+            expect(screen.getByText(/exceeds Mastodon.*500/i)).toBeInTheDocument();
+        });
+    });
+
+    it('disables publish buttons when post text exceeds Bluesky limit', async () => {
+        loadSettings.mockReturnValue({
+            publishDestination: 'buffer',
+            bufferChannels: [{ id: 'bsky-1', service: 'bluesky', name: 'my-handle' }],
+            selectedTag: 'to-tweet',
+        });
+
+        const longProposal = 'A'.repeat(301);
+        render(<ConfirmationPage {...defaultProps} proposal={longProposal} />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
+        });
+
+        expect(screen.getByRole('button', { name: /^Now$/i })).toBeDisabled();
+        expect(screen.getByRole('button', { name: /^Drafts$/i })).toBeDisabled();
+    });
+
+    it('enables publish buttons when text is edited below limit', async () => {
+        loadSettings.mockReturnValue({
+            publishDestination: 'buffer',
+            bufferChannels: [{ id: 'bsky-1', service: 'bluesky', name: 'my-handle' }],
+            selectedTag: 'to-tweet',
+        });
+
+        const longProposal = 'A'.repeat(301);
+        render(<ConfirmationPage {...defaultProps} proposal={longProposal} />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
+        });
+
+        // Buttons should be disabled
+        expect(screen.getByRole('button', { name: /^Now$/i })).toBeDisabled();
+
+        // Edit text to be within limit
+        const textarea = screen.getByPlaceholderText(/Post content/i);
+        fireEvent.change(textarea, { target: { value: 'Short post' } });
+
+        // Buttons should be enabled
+        expect(screen.getByRole('button', { name: /^Now$/i })).not.toBeDisabled();
+    });
+
+    it('does not show character limit warning when full text is within limits', async () => {
+        loadSettings.mockReturnValue({
+            publishDestination: 'buffer',
+            bufferChannels: [
+                { id: 'bsky-1', service: 'bluesky', name: 'my-handle' },
+            ],
+            selectedTag: 'to-tweet',
+        });
+
+        // postContent=250 + "\n\n" + "https://example.com/hooks"(27) = 279 < 300
+        const shortProposal = 'A'.repeat(250);
+        render(<ConfirmationPage {...defaultProps} proposal={shortProposal} />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
+        });
+
+        expect(screen.queryByText(/exceeds/i)).not.toBeInTheDocument();
+    });
+
+    it('accounts for article URL in character limit (postContent under limit but fullText over)', async () => {
+        loadSettings.mockReturnValue({
+            publishDestination: 'buffer',
+            bufferChannels: [{ id: 'bsky-1', service: 'bluesky', name: 'my-handle' }],
+            selectedTag: 'to-tweet',
+        });
+
+        // postContent=275 chars, under 300. But fullText = 275 + "\n\n" + URL(27) = 304 > 300
+        const proposal = 'A'.repeat(275);
+        render(<ConfirmationPage {...defaultProps} proposal={proposal} />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
+        });
+
+        // Should show warning because full text exceeds 300
+        expect(screen.getByText(/exceeds Bluesky.*300/i)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^Now$/i })).toBeDisabled();
+    });
+
+    it('extracts channel IDs from channel objects when publishing', async () => {
+        loadSettings.mockReturnValue({
+            publishDestination: 'buffer',
+            bufferChannels: [{ id: 'bsky-1', service: 'bluesky', name: 'my-handle' }],
+            selectedTag: 'to-tweet',
+        });
+        publishPost.mockResolvedValueOnce({ success: true, url: 'https://buffer.com/1' });
+
+        render(<ConfirmationPage {...defaultProps} />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: /^Drafts$/i }));
+
+        await waitFor(() => {
+            expect(publishPost).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.any(String),
+                expect.any(Object),
+                'buffer',
+                ['bsky-1'],
+                'draft'
+            );
+        });
+    });
+
     it('pasting an image populates the Custom card, not the screenshot card', async () => {
         render(<ConfirmationPage {...defaultProps} />);
 
