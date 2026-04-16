@@ -43,12 +43,19 @@ router.post('/', async (req, res) => {
         const channelServiceMap = Object.fromEntries(allChannels.map(ch => [ch.id, ch.service]));
 
         // Pre-validate text length against all target channels
+        // Bluesky counts URLs separately, so strip the articleUrl from the text for that platform
+        const URL_EXCLUDED_SERVICES = new Set(['bluesky']);
         const violations = [];
         for (const channelId of targetChannels) {
             const service = channelServiceMap[channelId];
-            if (service && CHAR_LIMITS[service] && text.length > CHAR_LIMITS[service]) {
+            if (!service || !CHAR_LIMITS[service]) continue;
+            let textToCheck = text;
+            if (URL_EXCLUDED_SERVICES.has(service) && articleUrl) {
+                textToCheck = text.replace(`\n\n${articleUrl}`, '').replace(articleUrl, '');
+            }
+            if (textToCheck.length > CHAR_LIMITS[service]) {
                 const label = service.charAt(0).toUpperCase() + service.slice(1);
-                violations.push(`${label} posts cannot exceed ${CHAR_LIMITS[service]} characters (got ${text.length})`);
+                violations.push(`${label} posts cannot exceed ${CHAR_LIMITS[service]} characters (got ${textToCheck.length})`);
             }
         }
         if (violations.length > 0) {
@@ -78,9 +85,19 @@ router.post('/', async (req, res) => {
 
         for (const channelId of targetChannels) {
             try {
+                const service = channelServiceMap[channelId];
+
+                // For Bluesky, strip the articleUrl from post text and attach as link card instead
+                let postText = text;
+                let blueskyLinkAttachment = null;
+                if (service === 'bluesky' && articleUrl) {
+                    postText = text.replace(`\n\n${articleUrl}`, '').replace(articleUrl, '').trimEnd();
+                    blueskyLinkAttachment = { url: articleUrl };
+                }
+
                 const input = {
                     channelId: channelId,
-                    text: text,
+                    text: postText,
                 };
 
                 // Buffer GraphQL API requires both schedulingType and mode:
@@ -122,6 +139,10 @@ router.post('/', async (req, res) => {
                     input.assets = {
                         images: [{ url: imageUrl }]
                     };
+                }
+
+                if (blueskyLinkAttachment) {
+                    input.metadata = { bluesky: { linkAttachment: blueskyLinkAttachment } };
                 }
 
                 console.log(`Buffer API → createPost channel=${channelId} mode=${input.mode} scheduling=${input.schedulingType}${input.saveToDraft ? ' draft=true' : ''}${imageUrl ? ' +image' : ''}`);
@@ -173,12 +194,16 @@ router.post('/', async (req, res) => {
             console.warn(`Buffer multi-post completed with partial failures:`, errors);
         }
 
-        return res.json({
+        const result = {
             success: true,
             url: 'https://publish.buffer.com/all-channels',
             message: `Published to ${successCount} channel(s)`,
-            postedIds
-        });
+            postedIds,
+        };
+        if (errors.length > 0) {
+            result.partialErrors = errors;
+        }
+        return res.json(result);
     } catch (error) {
         console.error('Publish Error:', error.response?.data || error.message || error);
 

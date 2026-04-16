@@ -732,14 +732,14 @@ describe('ConfirmationPage', () => {
         expect(screen.queryByText(/exceeds/i)).not.toBeInTheDocument();
     });
 
-    it('accounts for article URL in character limit (postContent under limit but fullText over)', async () => {
+    it('Bluesky char limit excludes article URL (275 chars text should pass)', async () => {
         loadSettings.mockReturnValue({
             publishDestination: 'buffer',
             bufferChannels: [{ id: 'bsky-1', service: 'bluesky', name: 'my-handle' }],
             selectedTag: 'to-tweet',
         });
 
-        // postContent=275 chars, under 300. But fullText = 275 + "\n\n" + URL(27) = 304 > 300
+        // postContent=275 chars, under 300. Bluesky counts URLs separately, so this should pass.
         const proposal = 'A'.repeat(275);
         render(<ConfirmationPage {...defaultProps} proposal={proposal} />);
 
@@ -747,9 +747,53 @@ describe('ConfirmationPage', () => {
             expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
         });
 
-        // Should show warning because full text exceeds 300
-        expect(screen.getByText(/exceeds Bluesky.*300/i)).toBeInTheDocument();
+        // Should NOT show warning — Bluesky doesn't count the URL
+        expect(screen.queryByText(/exceeds Bluesky.*300/i)).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^Now$/i })).not.toBeDisabled();
+    });
+
+    it('Mastodon char limit still includes article URL', async () => {
+        loadSettings.mockReturnValue({
+            publishDestination: 'buffer',
+            bufferChannels: [{ id: 'masto-1', service: 'mastodon', name: 'my-instance' }],
+            selectedTag: 'to-tweet',
+        });
+
+        // postContent=475 chars, under 500. But fullText = 475 + "\n\n" + URL(27) = 504 > 500
+        const proposal = 'A'.repeat(475);
+        render(<ConfirmationPage {...defaultProps} proposal={proposal} />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
+        });
+
+        // Should show warning — Mastodon counts everything including URLs
+        expect(screen.getByText(/exceeds Mastodon.*500/i)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /^Now$/i })).toBeDisabled();
+    });
+
+    it('shows partial failure warning when publish returns partialErrors', async () => {
+        publishPost.mockResolvedValueOnce({
+            success: true,
+            url: 'https://publish.buffer.com/all-channels',
+            message: 'Published to 1 channel(s)',
+            partialErrors: ['Channel bsky-1: Bluesky posts cannot exceed 300 characters.'],
+        });
+
+        render(<ConfirmationPage {...defaultProps} />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('image-option-screenshot').textContent).not.toMatch(/Loading/i);
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: /^Drafts$/i }));
+
+        await waitFor(() => {
+            expect(screen.getByText(/Post Published!/i)).toBeInTheDocument();
+        });
+
+        // Should show partial error warning
+        expect(screen.getByText(/Bluesky posts cannot exceed 300 characters/i)).toBeInTheDocument();
     });
 
     it('extracts channel IDs from channel objects when publishing', async () => {

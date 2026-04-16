@@ -68,7 +68,7 @@ server/                         Node.js/Express backend
 **Key integrations:**
 - **Raindrop.io** — OAuth 2.0 for bookmark access. Redirect URI: `http://yourdomain/api/auth/raindropio/callback`
 - **Venice AI** — LLM text proposals + image generation (model: `gpt-image-1-5`)
-- **Buffer** — Multi-channel publishing via [GraphQL API](https://developers.buffer.com/reference.html#field-account). Supports simultaneous publishing to LinkedIn, X/Twitter, Mastodon, etc.
+- **Buffer** — Multi-channel publishing via [GraphQL API](https://developers.buffer.com/reference.html#field-account). Supports simultaneous publishing to LinkedIn, X/Twitter, Mastodon, etc. **Bluesky note:** Bluesky counts all text including URLs against its 300-char limit. The Bluesky app silently truncates URLs via the [facets system](https://github.com/bluesky-social/atproto/discussions/3517), but the API does not. We strip the article URL from the post text and attach it via `metadata.bluesky.linkAttachment` so it appears as a link card without eating into the character budget.
 - **Cloudflare R2** — S3-compatible image hosting for screenshots; background cleanup after publish
 
 ## Patterns & Conventions

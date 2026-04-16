@@ -73,9 +73,16 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
         })();
 
     // Character limit warnings per platform
+    // Bluesky counts URLs separately, so check postContent only; Mastodon counts everything.
     const CHAR_LIMITS = { bluesky: 300, mastodon: 500 };
+    const URL_EXCLUDED_SERVICES = new Set(['bluesky']);
     const charWarnings = bufferChannelObjects
-        .filter(ch => ch.service && CHAR_LIMITS[ch.service] && estimatedFullText.length > CHAR_LIMITS[ch.service])
+        .filter(ch => {
+            const limit = CHAR_LIMITS[ch.service];
+            if (!limit) return false;
+            const textToCheck = URL_EXCLUDED_SERVICES.has(ch.service) ? postContent : estimatedFullText;
+            return textToCheck.length > limit;
+        })
         .map(ch => ({ service: ch.service, limit: CHAR_LIMITS[ch.service] }))
         // dedupe by service
         .filter((w, i, arr) => arr.findIndex(x => x.service === w.service) === i);
@@ -479,6 +486,14 @@ const ConfirmationPage = ({ proposal, article, onBack, onNextPost }) => {
                         >
                             View on {destination}
                         </a>
+                        {publishSuccessData.partialErrors && publishSuccessData.partialErrors.length > 0 && (
+                            <div className="mb-4 p-3 rounded-md bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 text-sm font-medium border border-yellow-200 dark:border-yellow-800">
+                                <p className="font-semibold mb-1">Some channels failed:</p>
+                                <ul className="list-disc list-inside">
+                                    {publishSuccessData.partialErrors.map((err, i) => <li key={i}>{err}</li>)}
+                                </ul>
+                            </div>
+                        )}
                         {tagWarning && (
                             <div className="mb-4 p-3 rounded-md bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 text-sm font-medium border border-yellow-200 dark:border-yellow-800">
                                 {tagWarning}

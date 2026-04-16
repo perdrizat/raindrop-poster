@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - `observability-raindrop-spec.md` — instrumentation plan for full logging (pino + Loki + MinIO artifacts)
 
+## [2026-04-16]
+
+### Fixed
+- Bluesky posts now strip the article URL from post text and attach it as a `linkAttachment` via Buffer's Bluesky metadata, staying within the 300-char limit
+- Partial publish failures (e.g. one channel succeeds, another rejects) now surface in the UI as warnings instead of being silently swallowed
+
 ## [2026-04-06]
 
 ### Fixed

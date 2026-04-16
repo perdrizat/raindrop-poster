@@ -483,6 +483,160 @@ describe('POST /api/publish', () => {
         expect(axios.post).toHaveBeenCalledTimes(1); // only GetChannels
     });
 
+    it('should exclude articleUrl from Bluesky char limit check', async () => {
+        process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
+        process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
+
+        axios.post.mockImplementation(() =>
+            Promise.resolve({ data: { data: {
+                channels: [{ id: 'bsky-1', service: 'bluesky', name: 'handle' }],
+                createPost: { __typename: 'PostActionSuccess', post: { id: 'post-1' } },
+            } } })
+        );
+
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
+
+        // Text without URL is 280 chars (under 300), but with URL appended it would be 280 + \n\n + URL = 310+
+        // Bluesky counts URLs separately, so this should pass
+        const response = await request(testApp)
+            .post('/api/publish')
+            .send({
+                text: 'A'.repeat(280) + '\n\nhttps://example.com/article',
+                articleUrl: 'https://example.com/article',
+                targetChannels: ['bsky-1'],
+            });
+
+        expect(response.status).toBe(200);
+    });
+
+    it('should still include articleUrl in Mastodon char limit check', async () => {
+        process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
+        process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
+
+        axios.post.mockImplementationOnce(() =>
+            Promise.resolve({ data: { data: { channels: [{ id: 'masto-1', service: 'mastodon', name: 'instance' }] } } })
+        );
+
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
+
+        // Text is 480 + \n\n + URL = 510, over Mastodon's 500 limit
+        const response = await request(testApp)
+            .post('/api/publish')
+            .send({
+                text: 'A'.repeat(480) + '\n\nhttps://example.com/article',
+                articleUrl: 'https://example.com/article',
+                targetChannels: ['masto-1'],
+            });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toMatch(/Mastodon.*500/i);
+    });
+
+    it('should strip articleUrl from Bluesky post text and attach as linkAttachment metadata', async () => {
+        process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
+        process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
+
+        axios.post.mockImplementation(() =>
+            Promise.resolve({ data: { data: {
+                channels: [{ id: 'bsky-1', service: 'bluesky', name: 'handle' }],
+                createPost: { __typename: 'PostActionSuccess', post: { id: 'post-1' } },
+            } } })
+        );
+
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
+
+        await request(testApp)
+            .post('/api/publish')
+            .send({
+                text: 'Great article about testing\n\nhttps://example.com/article',
+                articleUrl: 'https://example.com/article',
+                targetChannels: ['bsky-1'],
+            });
+
+        // The createPost call (second axios.post call) should have text without URL
+        // and metadata.bluesky.linkAttachment with the URL
+        const createPostCall = axios.post.mock.calls[1];
+        const input = createPostCall[1].variables.input;
+        expect(input.text).toBe('Great article about testing');
+        expect(input.metadata).toEqual({ bluesky: { linkAttachment: { url: 'https://example.com/article' } } });
+    });
+
+    it('should NOT strip URL from non-Bluesky channel text', async () => {
+        process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
+        process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
+
+        axios.post.mockImplementation(() =>
+            Promise.resolve({ data: { data: {
+                channels: [{ id: 'li-1', service: 'linkedin', name: 'profile' }],
+                createPost: { __typename: 'PostActionSuccess', post: { id: 'post-1' } },
+            } } })
+        );
+
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
+
+        await request(testApp)
+            .post('/api/publish')
+            .send({
+                text: 'Great article\n\nhttps://example.com/article',
+                articleUrl: 'https://example.com/article',
+                targetChannels: ['li-1'],
+            });
+
+        const createPostCall = axios.post.mock.calls[1];
+        const input = createPostCall[1].variables.input;
+        expect(input.text).toBe('Great article\n\nhttps://example.com/article');
+        expect(input.metadata).toBeUndefined();
+    });
+
+    it('should return partial failure warnings in response when some channels fail', async () => {
+        process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
+        process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
+
+        // First call: GetChannels
+        // Second call: channel 1 succeeds
+        // Third call: channel 2 fails
+        axios.post
+            .mockImplementationOnce(() =>
+                Promise.resolve({ data: { data: { channels: [
+                    { id: 'li-1', service: 'linkedin', name: 'profile' },
+                    { id: 'bsky-1', service: 'bluesky', name: 'handle' },
+                ] } } })
+            )
+            .mockImplementationOnce(() =>
+                Promise.resolve({ data: { data: { createPost: { __typename: 'PostActionSuccess', post: { id: 'post-1' } } } } })
+            )
+            .mockImplementationOnce(() =>
+                Promise.resolve({ data: { data: { createPost: { __typename: 'InvalidInputError', message: 'Bluesky posts cannot exceed 300 characters.' } } } })
+            );
+
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
+
+        const response = await request(testApp)
+            .post('/api/publish')
+            .send({
+                text: 'Test post',
+                articleUrl: 'https://example.com',
+                targetChannels: ['li-1', 'bsky-1'],
+            });
+
+        // Should still succeed (partial) but include warnings
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.partialErrors).toBeDefined();
+        expect(response.body.partialErrors).toHaveLength(1);
+        expect(response.body.partialErrors[0]).toMatch(/Bluesky/i);
+    });
+
     it('should send saveToDraft=true with mode=addToQueue for "Drafts"', async () => {
         process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
         process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
