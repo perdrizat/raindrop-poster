@@ -6,9 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+
 ## [2026-04-17]
 
 ### Added
+- Stripped marketing tracking parameters (utm, share, etc.) directly from article URLs during fetch to ensure clean URLs across the system
 - `spec/unified-post-page-spec.md` — implementation plan for merging Queue and Review screens into a single PostPage
 - `observability-raindrop-spec.md` — instrumentation plan for full logging (pino + Loki + MinIO artifacts)
 - Unified PostPage: merges Queue (PublishPage) and Review & Publish (ConfirmationPage) into one view. Bookmark navigation (Newer/Older/Regenerate), AI proposals ↔ image options carousel, emoji buttons, publish buttons (Now/Prioritize/Next/Drafts) and top-right PublishOverlay (success/error, partial errors, tag warning, Next Post).
