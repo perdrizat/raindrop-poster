@@ -101,4 +101,19 @@ describe('publishService', () => {
         expect(sentBody.targetChannels).toEqual([]);
         expect(sentBody.bufferMode).toBe('draft');
     });
+
+    it('forwards an AbortSignal to fetch when passed', async () => {
+        globalThis.fetch = vi.fn().mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ success: true }),
+        });
+
+        const controller = new AbortController();
+        await publishPost('Test', 'https://example.com', {}, 'buffer', [], 'draft', controller.signal);
+
+        expect(globalThis.fetch).toHaveBeenCalledWith(
+            '/api/publish',
+            expect.objectContaining({ signal: controller.signal })
+        );
+    });
 });

@@ -1,17 +1,17 @@
-export const generateProposals = async (article, customPrompt) => {
+export const generateProposals = async (article, customPrompt, signal) => {
     try {
         if (!article || !article.link) {
             throw new Error("Invalid article provided");
         }
 
-        // 1. Scrape the article text (now returns markdown + html)
         let articleText = '';
         let scrapeData = { markdown: '', html: '' };
 
         const scrapeRes = await fetch('/api/scrape', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: article.link })
+            body: JSON.stringify({ url: article.link }),
+            signal,
         });
 
         if (scrapeRes.ok) {
@@ -25,7 +25,6 @@ export const generateProposals = async (article, customPrompt) => {
             console.warn("Scraping failed, falling back to metadata only", await scrapeRes.text());
         }
 
-        // 2. Generate proposals (send markdown to Venice for richer context)
         const generateRes = await fetch('/api/venice/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -37,7 +36,8 @@ export const generateProposals = async (article, customPrompt) => {
                     url: article.link,
                     highlight: article.highlight
                 }
-            })
+            }),
+            signal,
         });
 
         if (!generateRes.ok) {
@@ -53,6 +53,9 @@ export const generateProposals = async (article, customPrompt) => {
         };
 
     } catch (error) {
+        if (error?.name === 'AbortError') {
+            throw error;
+        }
         console.error("aiService generateProposals error:", error);
         throw error;
     }

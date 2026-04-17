@@ -9,8 +9,7 @@ vi.mock('./services/systemService', () => ({
     getSystemStatus: vi.fn().mockResolvedValue({ isConfigured: true }),
 }));
 vi.mock('./pages/SetupPage', () => ({ default: () => <div data-testid="setup-page">Setup Page</div> }));
-vi.mock('./pages/PublishPage', () => ({ default: () => <div data-testid="publish-page">Publish Page</div> }));
-vi.mock('./pages/ConfirmationPage', () => ({ default: () => <div data-testid="confirmation-page">Confirmation Page</div> }));
+vi.mock('./pages/PostPage', () => ({ default: () => <div data-testid="publish-page">Post Page</div> }));
 
 Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -41,7 +40,7 @@ describe('App routing and navigation (Backlog Side Quests)', () => {
         expect(screen.queryByTestId('publish-page')).not.toBeInTheDocument();
     });
 
-    it('defaults to PublishPage (Queue) if selectedTag is configured', async () => {
+    it('defaults to PostPage (Queue) if selectedTag is configured', async () => {
         settingsService.loadSettings.mockReturnValue({ selectedTag: 'important' });
         render(<App />);
         await waitFor(() => {

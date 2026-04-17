@@ -6,8 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2026-04-17]
+
 ### Added
+- `spec/unified-post-page-spec.md` — implementation plan for merging Queue and Review screens into a single PostPage
 - `observability-raindrop-spec.md` — instrumentation plan for full logging (pino + Loki + MinIO artifacts)
+- Unified PostPage: merges Queue (PublishPage) and Review & Publish (ConfirmationPage) into one view. Bookmark navigation (Newer/Older/Regenerate), AI proposals ↔ image options carousel, emoji buttons, publish buttons (Now/Prioritize/Next/Drafts) and top-right PublishOverlay (success/error, partial errors, tag warning, Next Post).
+- `BookmarkNav` and `PublishOverlay` reusable components
+- AbortController support in `aiService.generateProposals` and `publishService.publishPost` to cancel in-flight requests on bookmark navigation
+- UI polish: Save-to-Buffer buttons disabled until Post content is entered; carousel reserves fixed min-height so the page doesn't jump when proposals load or panel switches
+
+### Removed
+- `PublishPage.jsx` and `ConfirmationPage.jsx` (replaced by `PostPage.jsx`)
 
 ## [2026-04-16]
 

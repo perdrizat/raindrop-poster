@@ -94,4 +94,42 @@ describe('aiService', () => {
 
         await expect(generateProposals(article, 'prompt')).rejects.toThrow('Venice API down');
     });
+
+    it('forwards the AbortSignal to both scrape and generate fetch calls', async () => {
+        globalThis.fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ markdown: 'x', html: '<p>x</p>', text: 'x' })
+        });
+        globalThis.fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ proposals: ['a'] })
+        });
+
+        const controller = new AbortController();
+        const article = { title: 'T', link: 'http://t.com', highlight: '' };
+        await generateProposals(article, 'prompt', controller.signal);
+
+        expect(globalThis.fetch).toHaveBeenNthCalledWith(
+            1,
+            '/api/scrape',
+            expect.objectContaining({ signal: controller.signal })
+        );
+        expect(globalThis.fetch).toHaveBeenNthCalledWith(
+            2,
+            '/api/venice/generate',
+            expect.objectContaining({ signal: controller.signal })
+        );
+    });
+
+    it('rethrows AbortError so callers can detect cancellation', async () => {
+        const abortErr = new DOMException('aborted', 'AbortError');
+        globalThis.fetch.mockRejectedValueOnce(abortErr);
+
+        const controller = new AbortController();
+        controller.abort();
+        const article = { title: 'T', link: 'http://t.com', highlight: '' };
+
+        await expect(generateProposals(article, 'prompt', controller.signal))
+            .rejects.toMatchObject({ name: 'AbortError' });
+    });
 });

@@ -36,7 +36,8 @@ Multi-stage Dockerfile: Stage 1 builds the Vite client, Stage 2 runs Express + P
 
 ```
 client/                         React SPA (Vite + Tailwind)
-  src/pages/                    SetupPage, PublishPage, ConfirmationPage
+  src/pages/                    SetupPage, PostPage (unified queue + compose + publish)
+  src/components/               BookmarkNav, PublishOverlay, ThemeToggle, etc.
   src/services/                 Thin fetch wrappers for /api/* endpoints
   src/utils/                    Helpers (imageUtils)
 
@@ -85,8 +86,7 @@ server/                         Node.js/Express backend
 | File | Role |
 |------|------|
 | `client/src/App.jsx` | Main shell, navigation, view routing |
-| `client/src/pages/ConfirmationPage.jsx` | 2x2 image grid, schedule modes, publish flow |
-| `client/src/pages/PublishPage.jsx` | Article queue, AI proposal generation |
+| `client/src/pages/PostPage.jsx` | Unified queue + compose + publish (bookmark nav, AI proposals ↔ image options carousel, publish buttons, overlay) |
 | `client/src/pages/SetupPage.jsx` | BYOK wizard, OAuth, provider tests |
 | `server/index.js` | Express app entry, middleware, session config |
 | `server/routes/publish.js` | Buffer GraphQL multi-channel publishing |

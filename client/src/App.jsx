@@ -1,13 +1,11 @@
 import React, { useState } from 'react'
 import SetupPage from './pages/SetupPage'
-import PublishPage from './pages/PublishPage'
-import ConfirmationPage from './pages/ConfirmationPage'
+import PostPage from './pages/PostPage'
 import ThemeToggle from './components/ThemeToggle'
 import { loadSettings } from './services/settingsService'
 import { getSystemStatus } from './services/systemService'
 
 function App() {
-  const [confirmationData, setConfirmationData] = useState(null)
   const settings = loadSettings()
   const [activeView, setActiveView] = useState(() => {
     const path = window.location.pathname;
@@ -48,21 +46,6 @@ function App() {
       window.history.pushState(null, '', path);
     }
   }, [activeView, isSystemConfigured]);
-
-  const handleSelectProposal = (proposal, article) => {
-    setConfirmationData({ proposal, article })
-    setActiveView('confirmation')
-  }
-
-  const handleBackFromConfirmation = () => {
-    setActiveView('publish')
-    setConfirmationData(null)
-  }
-
-  const handleNextPost = () => {
-    setConfirmationData(null)
-    setActiveView('publish')
-  }
 
   if (isInitializing) {
     return (
@@ -120,19 +103,7 @@ function App() {
         {activeView === 'setup' && <SetupPage />}
 
         {activeView === 'publish' && (
-          <PublishPage
-            selectedTag={settings.selectedTag}
-            onSelectProposal={handleSelectProposal}
-          />
-        )}
-
-        {activeView === 'confirmation' && confirmationData && (
-          <ConfirmationPage
-            proposal={confirmationData.proposal}
-            article={confirmationData.article}
-            onBack={handleBackFromConfirmation}
-            onNextPost={handleNextPost}
-          />
+          <PostPage selectedTag={settings.selectedTag} />
         )}
       </main>
     </div>
