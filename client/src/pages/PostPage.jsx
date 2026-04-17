@@ -182,8 +182,9 @@ const PostPage = ({ selectedTag }) => {
         captureScreenshot(currentArticle, signal);
     }, [currentArticle, triggerGeneration, captureScreenshot]);
 
-    // Char limit warnings
-    const CHAR_LIMITS = { bluesky: 300, mastodon: 500 };
+    // Char limit warnings. Bluesky limit is 277: its facet system caps every URL at 23 chars
+    // regardless of actual length, so we exclude the URL from the count and cap at 300 - 23 = 277.
+    const CHAR_LIMITS = { bluesky: 277, mastodon: 500 };
     const URL_EXCLUDED_SERVICES = new Set(['bluesky']);
 
     const computeFullText = () => {
@@ -205,7 +206,9 @@ const PostPage = ({ selectedTag }) => {
         .filter(ch => {
             const limit = CHAR_LIMITS[ch.service];
             if (!limit) return false;
-            const textToCheck = URL_EXCLUDED_SERVICES.has(ch.service) ? postContent : estimatedFullText;
+            const textToCheck = URL_EXCLUDED_SERVICES.has(ch.service) && currentArticle?.link
+                ? estimatedFullText.replace(currentArticle.link, '')
+                : estimatedFullText;
             return textToCheck.length > limit;
         })
         .map(ch => ({ service: ch.service, limit: CHAR_LIMITS[ch.service] }))

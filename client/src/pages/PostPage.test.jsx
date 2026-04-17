@@ -272,7 +272,7 @@ describe('PostPage — post section + emojis', () => {
         expect(textarea.value).toBe('hello🤯');
     });
 
-    it('shows Bluesky character limit warning when post text exceeds 300 chars', async () => {
+    it('shows Bluesky character limit warning when post text (excluding URL) exceeds 277 chars', async () => {
         saveSettings({
             ...loadSettings(),
             bufferChannels: [{ id: 'c1', service: 'bluesky' }],
@@ -287,7 +287,7 @@ describe('PostPage — post section + emojis', () => {
         await userEvent.paste(longText);
 
         expect(screen.getByText(/bluesky/i)).toBeInTheDocument();
-        expect(screen.getByText(/300/)).toBeInTheDocument();
+        expect(screen.getByText(/277/)).toBeInTheDocument();
     });
 
     it('does NOT show Mastodon warning when only Bluesky is configured', async () => {
@@ -301,7 +301,7 @@ describe('PostPage — post section + emojis', () => {
         expect(screen.queryByText(/mastodon/i)).not.toBeInTheDocument();
     });
 
-    it('does NOT show Bluesky warning at exactly 300 chars', async () => {
+    it('does NOT show Bluesky warning when post text (excluding URL) is at the 277 boundary', async () => {
         saveSettings({
             ...loadSettings(),
             bufferChannels: [{ id: 'c1', service: 'bluesky' }],
@@ -310,8 +310,9 @@ describe('PostPage — post section + emojis', () => {
         render(<PostPage selectedTag="important" />);
         const textarea = await screen.findByLabelText(/^post$/i);
 
+        // Attribution adds 21 non-URL chars (\n\n"Highlight 1"\n\nvia ), so 256 + 21 = 277
         await userEvent.click(textarea);
-        await userEvent.paste('x'.repeat(300));
+        await userEvent.paste('x'.repeat(256));
 
         expect(screen.queryByText(/exceeds.*bluesky/i)).not.toBeInTheDocument();
     });

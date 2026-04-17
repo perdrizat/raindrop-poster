@@ -2,23 +2,12 @@
 
 Raindrop Poster is a web application designed to streamline the social media workflow for heavy content curators. It provides a simple, consolidated, and mobile-friendly workflow to turn your saved bookmarks in Raindrop.io into engaging, AI-generated social media posts — published directly to your Buffer queue without switching between multiple applications.
 
-## Quick Start
-
-```bash
-npm install && (cd client && npm install) && (cd server && npm install)
-npm run dev
-```
-
-On first launch, a **Setup Wizard** guides you through providing your API keys (Raindrop.io, Venice AI, Buffer, Cloudflare R2). All credentials are stored in a local SQLite database — no `.env` editing required.
-
-For architecture details, testing, and development setup, see [CONTRIBUTING.md](CONTRIBUTING.md).
-
 ## Project Features
 
 The application supports the following core workflows:
 
 * **BYOK Setup Wizard:** A first-time configuration wizard where users "Bring Your Own Keys" for Raindrop.io, Venice AI, Buffer, and Cloudflare R2. All keys are persisted to a local SQLite database, surviving container and browser restarts.
-* **Content Ingestion:** Automatically fetch and navigate an article queue from Raindrop.io based on tags.
+* **Unified Composition Workspace:** Queue navigation, AI generation, quote editing, image selection, and multi-channel publishing all happen seamlessly within a single consolidated screen without page loads.
 * **AI-Powered Generation:** Leverage the Venice LLM to automatically generate concise (~250 chars) post proposals based on the article's text and highlights.
 * **2x2 Image Selection Grid:** Before publishing, choose from four image options displayed in a square grid:
   * **Cover Image** — the bookmark's cover image from Raindrop.io.
@@ -36,12 +25,24 @@ The application supports the following core workflows:
 
 The application publishes exclusively through **Buffer**, supporting **Multi-Channel Selection** — deploy your queue items simultaneously to as many channels as you have configured (e.g. LinkedIn + X/Twitter + Mastodon in a single click).
 
-## Docker Deployment
+## Setup & Deployment
+
+On first launch, a **Setup Wizard** guides you through providing your API keys (Raindrop.io, Venice AI, Buffer, Cloudflare R2). All credentials are stored in a local SQLite database — no `.env` editing required.
+
+> **Note:** You'll need a Raindrop.io OAuth app with its redirect URI set to `http://yourdomain/api/auth/raindropio/callback`.
+
+### Quick Start (Local Development)
+
+```bash
+npm install && (cd client && npm install) && (cd server && npm install)
+npm run dev
+```
+
+### Docker Deployment (Production)
 
 ```bash
 docker compose up -d
 ```
-
 Available at `http://localhost` (port 80). SQLite data persists in a Docker volume across container restarts.
 
-> **Note:** You'll need a Raindrop.io OAuth app with its redirect URI set to `http://yourdomain/api/auth/raindropio/callback`.
+For architecture details, testing, and development setup, see [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -414,7 +414,7 @@ describe('POST /api/publish', () => {
         expect(response.body.success).toBe(true);
     });
 
-    it('should reject with 400 when text exceeds Bluesky 300-char limit', async () => {
+    it('should reject with 400 when text (excluding URL) exceeds Bluesky 277-char limit', async () => {
         process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
         process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
 
@@ -429,10 +429,10 @@ describe('POST /api/publish', () => {
 
         const response = await request(testApp)
             .post('/api/publish')
-            .send({ text: 'A'.repeat(301), targetChannels: ['bsky-1'] });
+            .send({ text: 'A'.repeat(278), targetChannels: ['bsky-1'] });
 
         expect(response.status).toBe(400);
-        expect(response.body.error).toMatch(/Bluesky.*300/i);
+        expect(response.body.error).toMatch(/Bluesky.*277/i);
         // Should NOT have called createPost
         expect(axios.post).toHaveBeenCalledTimes(1); // only GetChannels
     });
@@ -461,7 +461,7 @@ describe('POST /api/publish', () => {
         process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
         process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
 
-        // Two channels: linkedin (no limit) and bluesky (300 limit)
+        // Two channels: linkedin (no limit) and bluesky (277 limit, URL excluded)
         axios.post.mockImplementationOnce(() =>
             Promise.resolve({ data: { data: { channels: [
                 { id: 'li-1', service: 'linkedin', name: 'profile' },
@@ -475,10 +475,10 @@ describe('POST /api/publish', () => {
 
         const response = await request(testApp)
             .post('/api/publish')
-            .send({ text: 'A'.repeat(301), targetChannels: ['li-1', 'bsky-1'] });
+            .send({ text: 'A'.repeat(278), targetChannels: ['li-1', 'bsky-1'] });
 
         expect(response.status).toBe(400);
-        expect(response.body.error).toMatch(/Bluesky.*300/i);
+        expect(response.body.error).toMatch(/Bluesky.*277/i);
         // Should NOT have posted to any channel
         expect(axios.post).toHaveBeenCalledTimes(1); // only GetChannels
     });
@@ -498,12 +498,12 @@ describe('POST /api/publish', () => {
         testApp.use(express.json());
         testApp.use('/api/publish', publishRoutes);
 
-        // Text without URL is 280 chars (under 300), but with URL appended it would be 280 + \n\n + URL = 310+
-        // Bluesky counts URLs separately, so this should pass
+        // Text without URL is 270 chars (under 277), but with URL appended it would be 270 + \n\n + URL = 300+
+        // Bluesky counts every URL as max 23 chars via facets, so excluding the URL length is fine
         const response = await request(testApp)
             .post('/api/publish')
             .send({
-                text: 'A'.repeat(280) + '\n\nhttps://example.com/article',
+                text: 'A'.repeat(270) + '\n\nhttps://example.com/article',
                 articleUrl: 'https://example.com/article',
                 targetChannels: ['bsky-1'],
             });
@@ -536,7 +536,7 @@ describe('POST /api/publish', () => {
         expect(response.body.error).toMatch(/Mastodon.*500/i);
     });
 
-    it('should strip articleUrl from Bluesky post text and attach as linkAttachment metadata', async () => {
+    it('should send Bluesky post text as-is (URL included, no linkAttachment)', async () => {
         process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
         process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
 
@@ -559,12 +559,12 @@ describe('POST /api/publish', () => {
                 targetChannels: ['bsky-1'],
             });
 
-        // The createPost call (second axios.post call) should have text without URL
-        // and metadata.bluesky.linkAttachment with the URL
+        // The createPost call should send the text verbatim; Bluesky's facet system
+        // counts the URL as 23 chars regardless of actual length.
         const createPostCall = axios.post.mock.calls[1];
         const input = createPostCall[1].variables.input;
-        expect(input.text).toBe('Great article about testing');
-        expect(input.metadata).toEqual({ bluesky: { linkAttachment: { url: 'https://example.com/article' } } });
+        expect(input.text).toBe('Great article about testing\n\nhttps://example.com/article');
+        expect(input.metadata).toBeUndefined();
     });
 
     it('should NOT strip URL from non-Bluesky channel text', async () => {

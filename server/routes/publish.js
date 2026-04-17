@@ -26,8 +26,10 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'No target channels selected for Buffer.' });
         }
 
-        // Fetch channel metadata to enforce per-platform character limits before posting
-        const CHAR_LIMITS = { bluesky: 300, mastodon: 500 };
+        // Fetch channel metadata to enforce per-platform character limits before posting.
+        // Bluesky limit is 277 (not 300): the facet system caps every URL at 23 chars regardless
+        // of actual length, so excluding the URL from the count leaves 300 - 23 = 277 usable chars.
+        const CHAR_LIMITS = { bluesky: 277, mastodon: 500 };
         const channelsQuery = `
             query GetChannels($input: ChannelsInput!) {
                 channels(input: $input) { id, service }
@@ -85,19 +87,9 @@ router.post('/', async (req, res) => {
 
         for (const channelId of targetChannels) {
             try {
-                const service = channelServiceMap[channelId];
-
-                // For Bluesky, strip the articleUrl from post text and attach as link card instead
-                let postText = text;
-                let blueskyLinkAttachment = null;
-                if (service === 'bluesky' && articleUrl) {
-                    postText = text.replace(`\n\n${articleUrl}`, '').replace(articleUrl, '').trimEnd();
-                    blueskyLinkAttachment = { url: articleUrl };
-                }
-
                 const input = {
                     channelId: channelId,
-                    text: postText,
+                    text,
                 };
 
                 // Buffer GraphQL API requires both schedulingType and mode:
@@ -139,10 +131,6 @@ router.post('/', async (req, res) => {
                     input.assets = {
                         images: [{ url: imageUrl }]
                     };
-                }
-
-                if (blueskyLinkAttachment) {
-                    input.metadata = { bluesky: { linkAttachment: blueskyLinkAttachment } };
                 }
 
                 console.log(`Buffer API → createPost channel=${channelId} mode=${input.mode} scheduling=${input.schedulingType}${input.saveToDraft ? ' draft=true' : ''}${imageUrl ? ' +image' : ''}`);

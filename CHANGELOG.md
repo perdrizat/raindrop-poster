@@ -6,7 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-
 ## [2026-04-17]
 
 ### Added
@@ -17,6 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `BookmarkNav` and `PublishOverlay` reusable components
 - AbortController support in `aiService.generateProposals` and `publishService.publishPost` to cancel in-flight requests on bookmark navigation
 - UI polish: Save-to-Buffer buttons disabled until Post content is entered; carousel reserves fixed min-height so the page doesn't jump when proposals load or panel switches
+
+### Changed
+- Bluesky char check now enforces 277 chars excluding the article URL (instead of 300 including URL). Bluesky's facet system caps every URL at 23 chars regardless of actual length, so 300 − 23 = 277 is the usable text budget. Reverses yesterday's URL-stripping + `linkAttachment` approach; post text now goes to Buffer verbatim for all platforms.
 
 ### Removed
 - `PublishPage.jsx` and `ConfirmationPage.jsx` (replaced by `PostPage.jsx`)
