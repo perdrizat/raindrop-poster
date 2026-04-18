@@ -7,13 +7,16 @@ import BookmarkNav from '../components/BookmarkNav';
 import PublishOverlay from '../components/PublishOverlay';
 import { resizeImage } from '../utils/imageUtils';
 
+const parseHashIndex = () => {
+    const raw = typeof window !== 'undefined' ? window.location.hash.replace(/^#/, '') : '';
+    const n = parseInt(raw, 10);
+    return Number.isInteger(n) && n >= 1 ? n - 1 : 0;
+};
+
 const PostPage = ({ selectedTag }) => {
     const [articles, setArticles] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [currentIndex, setCurrentIndex] = useState(() => {
-        const saved = localStorage.getItem('raindrop_queue_index');
-        return saved ? parseInt(saved, 10) : 0;
-    });
+    const [currentIndex, setCurrentIndex] = useState(parseHashIndex);
 
     // AI proposals
     const [proposals, setProposals] = useState([]);
@@ -72,7 +75,7 @@ const PostPage = ({ selectedTag }) => {
     const loadArticles = useCallback(async () => {
         setIsLoading(true);
         try {
-            const items = await fetchTaggedItems(selectedTag);
+            const items = (await fetchTaggedItems(selectedTag)) || [];
             setArticles(items);
             setCurrentIndex(prev => {
                 if (items.length === 0) return 0;
@@ -93,25 +96,35 @@ const PostPage = ({ selectedTag }) => {
     }, [selectedTag, loadArticles]);
 
     useEffect(() => {
-        localStorage.setItem('raindrop_queue_index', currentIndex.toString());
+        const next = `#${currentIndex + 1}`;
+        if (window.location.hash !== next) {
+            window.history.replaceState(null, '', next);
+        }
     }, [currentIndex]);
 
-    const captureScreenshot = useCallback(async (article, signal) => {
+    useEffect(() => {
+        const onHashChange = () => setCurrentIndex(parseHashIndex());
+        window.addEventListener('hashchange', onHashChange);
+        return () => window.removeEventListener('hashchange', onHashChange);
+    }, []);
+
+    const captureScreenshot = useCallback(async (article, signal, overrides = null) => {
         setIsCapturing(true);
         setCaptureError(null);
         try {
+            const body = overrides || {
+                url: article.link,
+                quoteText: article.highlight || null,
+                author: '',
+                date: article.created ? new Date(article.created).toLocaleDateString() : '',
+                domain: extractDomain(article.link),
+                coverImageUrl: article.cover || null,
+                articleHtml: null,
+            };
             const response = await fetch('/api/screenshot', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    url: article.link,
-                    quoteText: article.highlight || null,
-                    author: '',
-                    date: article.created ? new Date(article.created).toLocaleDateString() : '',
-                    domain: extractDomain(article.link),
-                    coverImageUrl: article.cover || null,
-                    articleHtml: null,
-                }),
+                body: JSON.stringify(body),
                 signal,
             });
             if (!response.ok) throw new Error('Failed to capture screenshot');
@@ -125,6 +138,19 @@ const PostPage = ({ selectedTag }) => {
             if (!signal?.aborted) setIsCapturing(false);
         }
     }, []);
+
+    const refreshScreenshot = useCallback(() => {
+        if (!currentArticle) return;
+        captureScreenshot(currentArticle, abortRef.current?.signal, {
+            url: currentArticle.link,
+            quoteText: quote || null,
+            author,
+            date,
+            domain,
+            coverImageUrl: currentArticle.cover || null,
+            articleHtml: null,
+        });
+    }, [currentArticle, quote, author, date, domain, captureScreenshot]);
 
     const triggerGeneration = useCallback(async (article, signal) => {
         if (!article) return;
@@ -216,6 +242,24 @@ const PostPage = ({ selectedTag }) => {
 
     const isAnyLoading = isCapturing || isGeneratingAi || isUploadingCustom;
     const hasCharLimitViolation = charWarnings.length > 0;
+
+    // Maximum postContent length permitted by the strictest channel.
+    // Chars beyond this index should be highlighted as over-limit.
+    const maxAllowedPostLen = (() => {
+        let min = Infinity;
+        for (const ch of bufferChannelObjects) {
+            const limit = CHAR_LIMITS[ch.service];
+            if (!limit) continue;
+            const counted = URL_EXCLUDED_SERVICES.has(ch.service) && currentArticle?.link
+                ? estimatedFullText.replace(currentArticle.link, '')
+                : estimatedFullText;
+            const offset = counted.length - postContent.length;
+            const allowed = Math.max(0, limit - offset);
+            if (allowed < min) min = allowed;
+        }
+        return Number.isFinite(min) ? min : null;
+    })();
+    const hasOverage = maxAllowedPostLen !== null && postContent.length > maxAllowedPostLen;
 
     const insertEmoji = (emoji) => {
         const ta = postTextareaRef.current;
@@ -517,7 +561,21 @@ const PostPage = ({ selectedTag }) => {
                         </div>
                         <div>
                             <label htmlFor="domain-input" className="block text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase mb-1">Publication</label>
-                            <input id="domain-input" type="text" value={domain} onChange={e => setDomain(e.target.value)} className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md p-2 text-sm text-gray-800 dark:text-gray-200" placeholder="Domain name" />
+                            <div className="flex items-end gap-2">
+                                <input id="domain-input" type="text" value={domain} onChange={e => setDomain(e.target.value)} className="flex-1 min-w-0 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md p-2 text-sm text-gray-800 dark:text-gray-200" placeholder="Domain name" />
+                                <button
+                                    type="button"
+                                    onClick={refreshScreenshot}
+                                    disabled={isCapturing}
+                                    aria-label="Refresh screenshot"
+                                    title="Refresh screenshot"
+                                    className="shrink-0 inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-60 disabled:cursor-not-allowed p-2"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${isCapturing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582M20 20v-5h-.581M5.635 18.364A9 9 0 0019.418 15M18.364 5.636A9 9 0 004.582 9" />
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -528,14 +586,32 @@ const PostPage = ({ selectedTag }) => {
                         Post
                     </label>
                     <div className="flex gap-3 items-start">
-                        <textarea
-                            id="post-editor"
-                            ref={postTextareaRef}
-                            value={postContent}
-                            onChange={(e) => handlePostChange(e.target.value)}
-                            className="flex-1 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md p-3 resize-y min-h-[100px] text-gray-800 dark:text-gray-200 leading-relaxed font-sans placeholder-gray-400 dark:placeholder-gray-500"
-                            placeholder="Write your post..."
-                        />
+                        <div className="flex-1 relative">
+                            {hasOverage && (
+                                <div
+                                    data-testid="post-overage-overlay"
+                                    aria-hidden="true"
+                                    className="absolute inset-0 p-3 pointer-events-none whitespace-pre-wrap break-words leading-relaxed font-sans text-transparent select-none overflow-hidden"
+                                >
+                                    <span>{postContent.slice(0, maxAllowedPostLen)}</span>
+                                    <span
+                                        data-testid="post-overage-highlight"
+                                        className="bg-red-200 dark:bg-red-900/50 rounded-sm"
+                                    >
+                                        {postContent.slice(maxAllowedPostLen)}
+                                    </span>
+                                </div>
+                            )}
+                            <textarea
+                                id="post-editor"
+                                ref={postTextareaRef}
+                                value={postContent}
+                                onChange={(e) => handlePostChange(e.target.value)}
+                                className="relative w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md p-3 resize-y min-h-[100px] text-gray-800 dark:text-gray-200 leading-relaxed font-sans placeholder-gray-400 dark:placeholder-gray-500"
+                                style={hasOverage ? { backgroundColor: 'transparent' } : undefined}
+                                placeholder="Write your post..."
+                            />
+                        </div>
                         <div className="flex flex-col gap-2">
                             {['🔥', '🤯', '🤡'].map(emoji => (
                                 <button
@@ -730,7 +806,11 @@ const PostPage = ({ selectedTag }) => {
                     url={publishResult.url}
                     partialErrors={publishResult.partialErrors}
                     tagWarning={publishResult.tagWarning}
-                    onDismiss={() => setPublishResult(null)}
+                    onDismiss={() => {
+                        const wasSuccess = publishResult.type === 'success';
+                        setPublishResult(null);
+                        if (wasSuccess) loadArticles();
+                    }}
                     onNext={publishResult.type === 'success' ? handleNextPost : undefined}
                 />
             )}

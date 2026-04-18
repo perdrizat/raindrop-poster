@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2026-04-19]
+
+### Added
+- Refresh-screenshot button next to Publication field: re-fires `/api/screenshot` with the current (edited) quote, author, date, and domain
+- Over-limit highlight: when post text exceeds the strictest channel's limit, the excess characters are highlighted in red via an overlay on the Post textarea
+- Queue position is now reflected in the URL hash (`#1` for first, `#3` for third); supports direct linking, browser back/forward, and `hashchange` events
+
+### Changed
+- Dismissing a success overlay now re-fetches the articles list so the just-posted bookmark drops out and the queue position advances to the next available article
+
+### Removed
+- `raindrop_queue_index` localStorage key (replaced by URL hash)
+
 ## [2026-04-17]
 
 ### Added

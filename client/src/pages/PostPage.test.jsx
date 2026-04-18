@@ -30,6 +30,7 @@ describe('PostPage — scaffold + navigation', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         window.localStorage.clear();
+        window.history.replaceState(null, '', window.location.pathname);
         // Default: generateProposals returns empty so nothing else fires
         generateProposals.mockResolvedValue({ proposals: [], author: null, scrapeData: null });
         // Screenshot fetch default
@@ -95,7 +96,7 @@ describe('PostPage — scaffold + navigation', () => {
 
     it('goes back to previous article when Newer is clicked', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
-        window.localStorage.setItem('raindrop_queue_index', '1');
+        window.location.hash = '#2';
         render(<PostPage selectedTag="important" />);
         await waitFor(() => expect(screen.getByText('Article Two')).toBeInTheDocument());
 
@@ -105,23 +106,34 @@ describe('PostPage — scaffold + navigation', () => {
         await waitFor(() => expect(screen.getByText('Article One')).toBeInTheDocument());
     });
 
-    it('persists queue index in localStorage', async () => {
+    it('writes queue index to URL hash when navigating (1-indexed)', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        window.location.hash = '';
         render(<PostPage selectedTag="important" />);
         await waitFor(() => expect(screen.getByText('Article One')).toBeInTheDocument());
 
         const olderButtons = screen.getAllByRole('button', { name: /older/i });
         await userEvent.click(olderButtons[0]);
 
-        await waitFor(() => {
-            expect(window.localStorage.getItem('raindrop_queue_index')).toBe('1');
-        });
+        await waitFor(() => expect(window.location.hash).toBe('#2'));
     });
 
-    it('restores saved queue index on mount', async () => {
+    it('reads queue index from URL hash on mount', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
-        window.localStorage.setItem('raindrop_queue_index', '2');
+        window.location.hash = '#3';
         render(<PostPage selectedTag="important" />);
+        await waitFor(() => expect(screen.getByText('Article Three')).toBeInTheDocument());
+    });
+
+    it('responds to external hash changes (back/forward button)', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        window.location.hash = '#1';
+        render(<PostPage selectedTag="important" />);
+        await waitFor(() => expect(screen.getByText('Article One')).toBeInTheDocument());
+
+        window.location.hash = '#3';
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+
         await waitFor(() => expect(screen.getByText('Article Three')).toBeInTheDocument());
     });
 
@@ -137,6 +149,7 @@ describe('PostPage — quote section', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         window.localStorage.clear();
+        window.history.replaceState(null, '', window.location.pathname);
         generateProposals.mockResolvedValue({ proposals: [], author: null, scrapeData: null });
         globalThis.fetch = vi.fn().mockResolvedValue({
             ok: true,
@@ -188,6 +201,31 @@ describe('PostPage — quote section', () => {
         expect(authorInput.value).toBe('Jane Doe');
     });
 
+    it('refresh screenshot button fires /api/screenshot with current author/date/domain', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        render(<PostPage selectedTag="important" />);
+        const authorInput = await screen.findByLabelText(/author/i);
+
+        await waitFor(() => {
+            expect(globalThis.fetch).toHaveBeenCalledWith('/api/screenshot', expect.any(Object));
+        });
+
+        await userEvent.clear(authorInput);
+        await userEvent.type(authorInput, 'Jane Doe');
+        const dateInput = screen.getByLabelText(/date/i);
+        await userEvent.clear(dateInput);
+        await userEvent.type(dateInput, '2024-01-15');
+
+        const refreshBtn = screen.getByRole('button', { name: /refresh screenshot/i });
+        await userEvent.click(refreshBtn);
+
+        const calls = globalThis.fetch.mock.calls.filter(c => c[0] === '/api/screenshot');
+        const latest = JSON.parse(calls[calls.length - 1][1].body);
+        expect(latest.author).toBe('Jane Doe');
+        expect(latest.date).toBe('2024-01-15');
+        expect(latest.domain).toBe('example.com');
+    });
+
     it('does NOT trigger a screenshot fetch when quote is edited', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
         render(<PostPage selectedTag="important" />);
@@ -216,6 +254,7 @@ describe('PostPage — post section + emojis', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         window.localStorage.clear();
+        window.history.replaceState(null, '', window.location.pathname);
         generateProposals.mockResolvedValue({ proposals: [], author: null, scrapeData: null });
         globalThis.fetch = vi.fn().mockResolvedValue({
             ok: true,
@@ -272,6 +311,41 @@ describe('PostPage — post section + emojis', () => {
         expect(textarea.value).toBe('hello🤯');
     });
 
+    it('renders a highlight overlay marking chars past the strictest limit when over', async () => {
+        saveSettings({
+            ...loadSettings(),
+            bufferChannels: [{ id: 'c1', service: 'bluesky' }],
+        });
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        render(<PostPage selectedTag="important" />);
+        const textarea = await screen.findByLabelText(/^post$/i);
+
+        await userEvent.click(textarea);
+        await userEvent.paste('x'.repeat(300));
+
+        const overlay = screen.getByTestId('post-overage-overlay');
+        const highlighted = overlay.querySelector('[data-testid="post-overage-highlight"]');
+        expect(highlighted).toBeTruthy();
+        // highlighted segment contains only the excess x's, not the full post
+        expect(highlighted.textContent.length).toBeGreaterThan(0);
+        expect(highlighted.textContent.length).toBeLessThan(300);
+    });
+
+    it('does NOT render the highlight overlay when post text is under the limit', async () => {
+        saveSettings({
+            ...loadSettings(),
+            bufferChannels: [{ id: 'c1', service: 'bluesky' }],
+        });
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        render(<PostPage selectedTag="important" />);
+        const textarea = await screen.findByLabelText(/^post$/i);
+
+        await userEvent.click(textarea);
+        await userEvent.paste('short post');
+
+        expect(screen.queryByTestId('post-overage-overlay')).not.toBeInTheDocument();
+    });
+
     it('shows Bluesky character limit warning when post text (excluding URL) exceeds 277 chars', async () => {
         saveSettings({
             ...loadSettings(),
@@ -322,6 +396,7 @@ describe('PostPage — AI proposals panel', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         window.localStorage.clear();
+        window.history.replaceState(null, '', window.location.pathname);
         globalThis.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ imageData: null }),
@@ -485,6 +560,7 @@ describe('PostPage — image options panel', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         window.localStorage.clear();
+        window.history.replaceState(null, '', window.location.pathname);
         generateProposals.mockResolvedValue({ proposals: [], author: null, scrapeData: null });
         globalThis.fetch = vi.fn().mockResolvedValue({
             ok: true,
@@ -567,6 +643,7 @@ describe('PostPage — publishing + overlay', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         window.localStorage.clear();
+        window.history.replaceState(null, '', window.location.pathname);
         generateProposals.mockResolvedValue({ proposals: ['Hello world'], author: null, scrapeData: null });
         updateBookmarkTags.mockResolvedValue(true);
         publishPost.mockResolvedValue({ success: true, url: 'https://buffer.com/abc' });
@@ -774,6 +851,50 @@ describe('PostPage — publishing + overlay', () => {
         await userEvent.click(dismissBtn);
 
         expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    it('dismissing a success overlay reloads the articles list at the same queue position', async () => {
+        saveSettings({
+            ...loadSettings(),
+            selectedTag: 'important',
+            bufferChannels: [{ id: 'c1', service: 'linkedin' }],
+        });
+        fetchTaggedItems.mockResolvedValue(mockArticles);
+
+        render(<PostPage selectedTag="important" />);
+        await fillPostAndSwitchToImages();
+
+        const initialFetches = fetchTaggedItems.mock.calls.length;
+
+        await userEvent.click(screen.getByRole('button', { name: /drafts/i }));
+        const dismissBtn = await screen.findByRole('button', { name: /dismiss/i });
+        await userEvent.click(dismissBtn);
+
+        await waitFor(() => {
+            expect(fetchTaggedItems.mock.calls.length).toBe(initialFetches + 1);
+        });
+    });
+
+    it('does NOT reload articles when dismissing an error overlay', async () => {
+        saveSettings({
+            ...loadSettings(),
+            bufferChannels: [{ id: 'c1', service: 'linkedin' }],
+        });
+        fetchTaggedItems.mockResolvedValue(mockArticles);
+        publishPost.mockRejectedValueOnce(new Error('boom'));
+
+        render(<PostPage selectedTag="important" />);
+        await fillPostAndSwitchToImages();
+
+        const initialFetches = fetchTaggedItems.mock.calls.length;
+
+        await userEvent.click(screen.getByRole('button', { name: /drafts/i }));
+        const dismissBtn = await screen.findByRole('button', { name: /dismiss/i });
+        await userEvent.click(dismissBtn);
+
+        // Wait a beat to let any erroneous reload fire
+        await new Promise(r => setTimeout(r, 30));
+        expect(fetchTaggedItems.mock.calls.length).toBe(initialFetches);
     });
 
     it('disables publish buttons while publishing is in flight', async () => {
