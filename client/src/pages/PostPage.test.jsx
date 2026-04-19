@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PostPage from './PostPage';
 import { fetchTaggedItems, updateBookmarkTags } from '../services/raindropioService';
@@ -536,6 +536,55 @@ describe('PostPage — AI proposals panel', () => {
         expect(screen.queryByTestId('image-options-panel')).not.toBeInTheDocument();
     });
 
+    it('re-fires screenshot with author when AI extraction returns a non-empty author', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        generateProposals.mockResolvedValueOnce({
+            proposals: ['Post text'],
+            author: 'Jane Doe',
+            scrapeData: null,
+        });
+
+        const screenshotBodies = [];
+        globalThis.fetch = vi.fn().mockImplementation(async (url, init) => {
+            if (url === '/api/screenshot') {
+                screenshotBodies.push(JSON.parse(init.body));
+            }
+            return { ok: true, json: async () => ({ imageData: 'data:image/png;base64,X' }) };
+        });
+
+        render(<PostPage selectedTag="important" />);
+
+        // Wait for the second screenshot call (the one triggered by author discovery)
+        await waitFor(() => expect(screenshotBodies.length).toBeGreaterThanOrEqual(2));
+        const authoredCall = screenshotBodies.find(b => b.author === 'Jane Doe');
+        expect(authoredCall).toBeTruthy();
+    });
+
+    it('does NOT re-fire screenshot when AI returns null author', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        generateProposals.mockResolvedValueOnce({
+            proposals: [],
+            author: null,
+            scrapeData: null,
+        });
+
+        const screenshotBodies = [];
+        globalThis.fetch = vi.fn().mockImplementation(async (url, init) => {
+            if (url === '/api/screenshot') {
+                screenshotBodies.push(JSON.parse(init.body));
+            }
+            return { ok: true, json: async () => ({ imageData: 'data:image/png;base64,X' }) };
+        });
+
+        render(<PostPage selectedTag="important" />);
+
+        // Wait for initial screenshot, then ensure no second call within a short window
+        await waitFor(() => expect(screenshotBodies.length).toBeGreaterThanOrEqual(1));
+        // Brief extra wait to catch any spurious second call
+        await new Promise(r => setTimeout(r, 100));
+        expect(screenshotBodies.length).toBe(1);
+    });
+
     it('cancels in-flight proposals when navigating to next bookmark', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
 
@@ -637,6 +686,69 @@ describe('PostPage — image options panel', () => {
         // Visual selection: the selected card has ring-blue-500 or similar; we use aria-pressed / class match
         expect(coverCard.className).toMatch(/(ring|border-blue)/);
     });
+
+    it('shows fixed-position enlarged preview overlay when an image card is hovered', async () => {
+        const articlesWithCover = [{ ...mockArticles[0], cover: 'https://img.com/cover.jpg' }];
+        fetchTaggedItems.mockResolvedValueOnce(articlesWithCover);
+        render(<PostPage selectedTag="important" />);
+        await switchToImages();
+
+        expect(screen.queryByTestId('image-preview-overlay')).not.toBeInTheDocument();
+
+        const coverCard = screen.getByTestId('image-option-cover');
+        await userEvent.hover(coverCard);
+
+        const overlay = await screen.findByTestId('image-preview-overlay');
+        const img = overlay.querySelector('img');
+        expect(img.getAttribute('src')).toBe('https://img.com/cover.jpg');
+    });
+
+    it('updates preview overlay when hover moves between cards without closing first', async () => {
+        const articlesWithCover = [{ ...mockArticles[0], cover: 'https://img.com/cover.jpg' }];
+        fetchTaggedItems.mockResolvedValueOnce(articlesWithCover);
+        render(<PostPage selectedTag="important" />);
+        await switchToImages();
+
+        await waitFor(() => {
+            const card = screen.getByTestId('image-option-screenshot');
+            expect(card.querySelector('img')).toBeTruthy();
+        });
+
+        await userEvent.hover(screen.getByTestId('image-option-cover'));
+        let overlay = await screen.findByTestId('image-preview-overlay');
+        expect(overlay.querySelector('img').getAttribute('src')).toBe('https://img.com/cover.jpg');
+
+        // Move hover directly to screenshot card — overlay should update, not disappear
+        await userEvent.hover(screen.getByTestId('image-option-screenshot'));
+        overlay = screen.getByTestId('image-preview-overlay');
+        expect(overlay.querySelector('img').getAttribute('src')).toContain('SCREENSHOTDATA');
+    });
+
+    it('hides preview overlay when leaving all cards', async () => {
+        const articlesWithCover = [{ ...mockArticles[0], cover: 'https://img.com/cover.jpg' }];
+        fetchTaggedItems.mockResolvedValueOnce(articlesWithCover);
+        render(<PostPage selectedTag="important" />);
+        await switchToImages();
+
+        const coverCard = screen.getByTestId('image-option-cover');
+        await userEvent.hover(coverCard);
+        await screen.findByTestId('image-preview-overlay');
+
+        await userEvent.unhover(coverCard);
+        await waitFor(() => expect(screen.queryByTestId('image-preview-overlay')).not.toBeInTheDocument());
+    });
+
+    it('preview overlay has pointer-events-none so cursor can reach cards underneath', async () => {
+        const articlesWithCover = [{ ...mockArticles[0], cover: 'https://img.com/cover.jpg' }];
+        fetchTaggedItems.mockResolvedValueOnce(articlesWithCover);
+        render(<PostPage selectedTag="important" />);
+        await switchToImages();
+
+        await userEvent.hover(screen.getByTestId('image-option-cover'));
+        const overlay = await screen.findByTestId('image-preview-overlay');
+        expect(overlay.className).toMatch(/pointer-events-none/);
+    });
+
 });
 
 describe('PostPage — publishing + overlay', () => {

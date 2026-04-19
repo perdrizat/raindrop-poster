@@ -13,6 +13,64 @@ const parseHashIndex = () => {
     return Number.isInteger(n) && n >= 1 ? n - 1 : 0;
 };
 
+
+const ImageCard = ({ id, label, imageSrc, isLoading, error, onRetry, onActivate, disabled, placeholder, selectedOption, onSelect, onHover }) => {
+    const isSelected = selectedOption === id;
+    const canSelect = !!imageSrc || id === 'cover';
+    const handleClick = () => {
+        if (disabled) return;
+        if (canSelect) {
+            onSelect(id);
+        } else if (onActivate && !isLoading) {
+            onActivate();
+        }
+    };
+    const handleMouseEnter = () => {
+        if (imageSrc && onHover) onHover({ id, src: imageSrc });
+    };
+    const handleMouseLeave = () => {
+        if (onHover) onHover(null);
+    };
+    return (
+        <div
+            data-testid={`image-option-${id}`}
+            onClick={handleClick}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+            className={`relative aspect-square rounded-lg border-2 overflow-hidden flex flex-col cursor-pointer transition-all duration-200
+                ${isSelected ? 'ring-2 ring-blue-500 border-blue-500' : 'border-gray-200 dark:border-gray-700'}
+                ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-blue-300 dark:hover:border-blue-600'}
+                bg-gray-50 dark:bg-gray-800/50`}
+        >
+            <div className="px-3 py-1.5 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 shrink-0">
+                <span className="text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase">{label}</span>
+                {onRetry && error && (
+                    <button onClick={(e) => { e.stopPropagation(); onRetry(); }} className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700">
+                        Retry
+                    </button>
+                )}
+            </div>
+            <div className="flex-1 flex items-center justify-center p-2 min-h-0">
+                {isLoading ? (
+                    <div className="flex items-center gap-2 text-gray-400">
+                        <svg className="animate-spin h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span className="text-xs italic">Loading...</span>
+                    </div>
+                ) : error ? (
+                    <p className="text-xs text-yellow-600 dark:text-yellow-400 text-center px-2">{error}</p>
+                ) : imageSrc ? (
+                    <img src={imageSrc} alt={label} className="max-w-full max-h-full object-contain rounded" />
+                ) : (
+                    <span className="text-xs text-gray-400 dark:text-gray-500 text-center px-2">{placeholder || 'No image'}</span>
+                )}
+            </div>
+        </div>
+    );
+};
+
 const PostPage = ({ selectedTag }) => {
     const [articles, setArticles] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -55,6 +113,9 @@ const PostPage = ({ selectedTag }) => {
 
     // Selected option for publish
     const [selectedImageOption, setSelectedImageOption] = useState('screenshot');
+
+    // Hover preview: { id, src } of currently-hovered image card, or null
+    const [hoveredImage, setHoveredImage] = useState(null);
 
     // Publishing state
     const [isPublishing, setIsPublishing] = useState(false);
@@ -165,9 +226,18 @@ const PostPage = ({ selectedTag }) => {
             setProposals(results.proposals || []);
             setExtractedAuthor(results.author || null);
             setScrapeData(results.scrapeData || null);
-            // Fill author from AI extraction if user hasn't typed anything
             if (results.author) {
                 setAuthor(prev => prev ? prev : results.author);
+                // Re-capture screenshot now that we have the author name
+                captureScreenshot(article, signal, {
+                    url: article.link,
+                    quoteText: article.highlight || null,
+                    author: results.author,
+                    date: article.created ? new Date(article.created).toLocaleDateString() : '',
+                    domain: extractDomain(article.link),
+                    coverImageUrl: article.cover || null,
+                    articleHtml: null,
+                });
             }
         } catch (error) {
             if (error?.name === 'AbortError') return;
@@ -175,7 +245,7 @@ const PostPage = ({ selectedTag }) => {
         } finally {
             if (!signal?.aborted) setIsGenerating(false);
         }
-    }, []);
+    }, [captureScreenshot]);
 
     // Load new bookmark: cancel prior, reset state, fire fresh requests
     useEffect(() => {
@@ -426,55 +496,6 @@ const PostPage = ({ selectedTag }) => {
     const handleNextPost = () => {
         setPublishResult(null);
         handleOlder();
-    };
-
-    const ImageCard = ({ id, label, imageSrc, isLoading, error, onRetry, onActivate, disabled, placeholder, selectedOption, onSelect }) => {
-        const isSelected = selectedOption === id;
-        const canSelect = !!imageSrc || id === 'cover';
-        const handleClick = () => {
-            if (disabled) return;
-            if (canSelect) {
-                onSelect(id);
-            } else if (onActivate && !isLoading) {
-                onActivate();
-            }
-        };
-        return (
-            <div
-                data-testid={`image-option-${id}`}
-                onClick={handleClick}
-                className={`aspect-square rounded-lg border-2 overflow-hidden flex flex-col cursor-pointer transition-all duration-200
-                    ${isSelected ? 'ring-2 ring-blue-500 border-blue-500' : 'border-gray-200 dark:border-gray-700'}
-                    ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-blue-300 dark:hover:border-blue-600'}
-                    bg-gray-50 dark:bg-gray-800/50`}
-            >
-                <div className="px-3 py-1.5 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 shrink-0">
-                    <span className="text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase">{label}</span>
-                    {onRetry && error && (
-                        <button onClick={(e) => { e.stopPropagation(); onRetry(); }} className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700">
-                            Retry
-                        </button>
-                    )}
-                </div>
-                <div className="flex-1 flex items-center justify-center p-2 min-h-0">
-                    {isLoading ? (
-                        <div className="flex items-center gap-2 text-gray-400">
-                            <svg className="animate-spin h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            <span className="text-xs italic">Loading...</span>
-                        </div>
-                    ) : error ? (
-                        <p className="text-xs text-yellow-600 dark:text-yellow-400 text-center px-2">{error}</p>
-                    ) : imageSrc ? (
-                        <img src={imageSrc} alt={label} className="max-w-full max-h-full object-contain rounded" />
-                    ) : (
-                        <span className="text-xs text-gray-400 dark:text-gray-500 text-center px-2">{placeholder || 'No image'}</span>
-                    )}
-                </div>
-            </div>
-        );
     };
 
     if (isLoading) {
@@ -758,6 +779,7 @@ const PostPage = ({ selectedTag }) => {
                                     placeholder="No cover available"
                                     selectedOption={selectedImageOption}
                                     onSelect={setSelectedImageOption}
+                                    onHover={setHoveredImage}
                                 />
                                 <ImageCard
                                     id="screenshot"
@@ -768,6 +790,7 @@ const PostPage = ({ selectedTag }) => {
                                     onRetry={() => captureScreenshot(currentArticle, abortRef.current?.signal)}
                                     selectedOption={selectedImageOption}
                                     onSelect={setSelectedImageOption}
+                                    onHover={setHoveredImage}
                                 />
                                 <ImageCard
                                     id="ai"
@@ -780,6 +803,7 @@ const PostPage = ({ selectedTag }) => {
                                     placeholder="Click to generate"
                                     selectedOption={selectedImageOption}
                                     onSelect={setSelectedImageOption}
+                                    onHover={setHoveredImage}
                                 />
                                 <ImageCard
                                     id="custom"
@@ -790,8 +814,23 @@ const PostPage = ({ selectedTag }) => {
                                     placeholder="Paste or upload"
                                     selectedOption={selectedImageOption}
                                     onSelect={setSelectedImageOption}
+                                    onHover={setHoveredImage}
                                 />
                             </div>
+                            {hoveredImage && (
+                                <div
+                                    data-testid="image-preview-overlay"
+                                    className="fixed inset-0 flex items-center justify-center z-40 pointer-events-none"
+                                >
+                                    <div className="bg-black/70 rounded-xl p-4 max-w-[80vw] max-h-[80vh] flex items-center justify-center">
+                                        <img
+                                            src={hoveredImage.src}
+                                            alt="Preview"
+                                            className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-2xl"
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

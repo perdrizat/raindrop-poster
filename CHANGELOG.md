@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Auto-regenerate screenshot with author name when Venice AI extraction returns a non-empty author (initial screenshot fires without author since AI runs in parallel; a second capture fires once the name is known)
+- Hover any of the 4 image cards (Cover / Screenshot / AI / Custom) to show a fixed-position enlarged preview in the center of the viewport; preview updates as hover moves between cards (no need to dismiss first) and is click-through (`pointer-events-none`) so the cursor can still reach the cards underneath
+### Changed
+- Extracted `ImageCard` from inside `PostPage` to a module-level component to avoid remounting children on every parent render (previously broke synthetic-event handlers after hover-triggered re-renders)
+
 ## [2026-04-19]
 
 ### Added
