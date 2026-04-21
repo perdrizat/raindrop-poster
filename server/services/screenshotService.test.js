@@ -26,7 +26,7 @@ vi.mock('./scraperService.js', () => {
     };
 });
 
-import { captureQuoteScreenshot, formatAttribution } from './screenshotService.js';
+import { captureQuoteScreenshot, formatAttribution, computeClip } from './screenshotService.js';
 import { __mockPage as mockPage } from './scraperService.js';
 
 describe('screenshotService', () => {
@@ -42,9 +42,9 @@ describe('screenshotService', () => {
 
     it('should navigate to URL and take screenshot when quote is found', async () => {
         mockPage.evaluate
-            .mockResolvedValueOnce({ found: true, rect: { x: 50, y: 200, width: 600, height: 100 } })
-            .mockResolvedValueOnce({ x: 0, y: 100, size: 700, totalHeight: 740, barHeight: 40 })
-            .mockResolvedValueOnce(undefined);
+            .mockResolvedValueOnce({ found: true, rect: { x: 50, y: 200, width: 600, height: 100 } }) // findQuoteInDOM
+            .mockResolvedValueOnce(5000)   // scrollHeight
+            .mockResolvedValueOnce(undefined); // attribution bar
 
         const result = await captureQuoteScreenshot(
             null,
@@ -76,7 +76,7 @@ describe('screenshotService', () => {
     it('should intercept x.com URLs and redirect to vxtwitter.com to bypass login walls', async () => {
         mockPage.evaluate
             .mockResolvedValueOnce({ found: false, rect: null }) // findQuoteInDOM (vxtwitter — no Wayback fallback)
-            .mockResolvedValueOnce({ x: 0, y: 0, size: 700, totalHeight: 740, barHeight: 40 }) // clip calc
+            .mockResolvedValueOnce(5000)   // scrollHeight
             .mockResolvedValueOnce(undefined); // attribution bar injection
 
         const result = await captureQuoteScreenshot(
@@ -98,7 +98,7 @@ describe('screenshotService', () => {
             .mockResolvedValueOnce({ found: false, rect: null }) // findQuoteInDOM — live site, not found
             .mockResolvedValueOnce({ found: false, rect: null }) // findQuoteInDOM — archive.ph fallback, not found
             .mockResolvedValueOnce({ found: false, rect: null }) // findQuoteInDOM — Wayback fallback, not found
-            .mockResolvedValueOnce({ x: 0, y: 0, size: 700, totalHeight: 740, barHeight: 40 }) // clip calc
+            .mockResolvedValueOnce(5000)   // scrollHeight
             .mockResolvedValueOnce(undefined); // attribution bar injection
 
         const result = await captureQuoteScreenshot(
@@ -138,9 +138,10 @@ describe('screenshotService', () => {
     it('should fall back to live URL when quote not found in local HTML', async () => {
         mockPage.setContent = vi.fn().mockResolvedValue();
         mockPage.evaluate
+            .mockResolvedValueOnce(5000)   // initialScrollHeight (before findQuoteInDOM)
             .mockResolvedValueOnce({ found: false, rect: null }) // findQuoteInDOM on local HTML — not found
             .mockResolvedValueOnce({ found: true, rect: { x: 50, y: 200, width: 600, height: 100 } }) // findQuoteInDOM on live URL — found
-            .mockResolvedValueOnce({ x: 0, y: 100, size: 700, totalHeight: 740, barHeight: 40 }) // clip calc
+            .mockResolvedValueOnce(5000)   // pageHeight
             .mockResolvedValueOnce(undefined); // attribution bar
 
         const result = await captureQuoteScreenshot(
@@ -162,9 +163,10 @@ describe('screenshotService', () => {
     it('should render local HTML via setContent when articleHtml is provided', async () => {
         mockPage.setContent = vi.fn().mockResolvedValue();
         mockPage.evaluate
-            .mockResolvedValueOnce({ found: true, rect: { x: 50, y: 200, width: 600, height: 100 } })
-            .mockResolvedValueOnce({ x: 0, y: 100, size: 700, totalHeight: 740, barHeight: 40 })
-            .mockResolvedValueOnce(undefined);
+            .mockResolvedValueOnce(5000)   // initialScrollHeight (before findQuoteInDOM)
+            .mockResolvedValueOnce({ found: true, rect: { x: 50, y: 200, width: 600, height: 100 } }) // findQuoteInDOM
+            .mockResolvedValueOnce(5000)   // pageHeight
+            .mockResolvedValueOnce(undefined); // attribution bar
 
         const articleHtml = '<h1>Test Article</h1><p>Some important quote text here.</p>';
         const result = await captureQuoteScreenshot(
@@ -178,6 +180,57 @@ describe('screenshotService', () => {
         expect(mockPage.setContent).toHaveBeenCalled();
         expect(mockPage.goto).not.toHaveBeenCalled();
         expect(result).toBeInstanceOf(Buffer);
+    });
+});
+
+describe('computeClip', () => {
+    const VIEWPORT_WIDTH = 390;
+    const PAGE_HEIGHT = 5000;
+
+    it('always sets x=0 and size=viewportWidth when quote is found, regardless of rect position', () => {
+        const foundResult = { found: true, rect: { x: 80, y: 400, width: 180, height: 60 } };
+        const clip = computeClip(foundResult, VIEWPORT_WIDTH, PAGE_HEIGHT);
+        expect(clip.x).toBe(0);
+        expect(clip.size).toBe(VIEWPORT_WIDTH);
+    });
+
+    it('derives y from rect.y with padding subtracted', () => {
+        const foundResult = { found: true, rect: { x: 0, y: 500, width: 390, height: 60 } };
+        const clip = computeClip(foundResult, VIEWPORT_WIDTH, PAGE_HEIGHT);
+        // y should be rect.y minus padding (30), clamped to 0
+        expect(clip.y).toBe(500 - 30);
+    });
+
+    it('clamps y to 0 when rect.y is less than padding', () => {
+        const foundResult = { found: true, rect: { x: 0, y: 10, width: 390, height: 60 } };
+        const clip = computeClip(foundResult, VIEWPORT_WIDTH, PAGE_HEIGHT);
+        expect(clip.y).toBe(0);
+    });
+
+    it('height is at least as large as size (square crop)', () => {
+        const foundResult = { found: true, rect: { x: 0, y: 200, width: 390, height: 20 } };
+        const clip = computeClip(foundResult, VIEWPORT_WIDTH, PAGE_HEIGHT);
+        expect(clip.height).toBeGreaterThanOrEqual(clip.size);
+    });
+
+    it('height expands to fit a tall quote', () => {
+        const foundResult = { found: true, rect: { x: 0, y: 200, width: 390, height: 800 } };
+        const clip = computeClip(foundResult, VIEWPORT_WIDTH, PAGE_HEIGHT);
+        expect(clip.height).toBeGreaterThan(VIEWPORT_WIDTH);
+        expect(clip.height).toBeGreaterThanOrEqual(800 + 60); // height + 2*padding
+    });
+
+    it('totalHeight includes barHeight', () => {
+        const foundResult = { found: true, rect: { x: 0, y: 200, width: 390, height: 60 } };
+        const clip = computeClip(foundResult, VIEWPORT_WIDTH, PAGE_HEIGHT);
+        expect(clip.totalHeight).toBe(clip.height + clip.barHeight);
+        expect(clip.barHeight).toBe(40);
+    });
+
+    it('falls back to full viewport size when quote not found', () => {
+        const clip = computeClip({ found: false, rect: null }, VIEWPORT_WIDTH, PAGE_HEIGHT);
+        expect(clip.x).toBe(0);
+        expect(clip.size).toBe(VIEWPORT_WIDTH);
     });
 });
 

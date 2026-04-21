@@ -1,50 +1,24 @@
 #!/usr/bin/env node
 /**
- * screenshot-test.mjs — standalone screenshot capture & R2 upload script.
+ * screenshot-test.mjs — standalone screenshot capture test script.
  *
- * Runs the full production screenshot pipeline (real Puppeteer + dismissPopups +
- * Wayback Machine fallback) on a curated set of "problem URLs", uploads each
- * result to Cloudflare R2, and prints the public URLs.
+ * The mission of this test is to verify that the screenshot was created correctly:
+ *   - identified the quote
+ *   - highlighted the quote fully but not more
+ *   - the full article page breadth is shown (no article lines cut off left or right)
+ *   - no elements overlaying the screen, such as cookie banners, subscription nags or ads
  *
- * This script is meant to be invoked by scripts/screenshot-test.sh, which
- * also downloads the images to /tmp for local inspection.
+ * This runs the screenshot pipeline (real Puppeteer + dismissPopups +
+ * Wayback Machine fallback) on a curated set of "problem URLs" and saves
+ * the resulting images locally to /tmp/raindrop-screenshots/.
+ * This is NOT an end-to-end test of the screenshotting function (no R2 upload).
  *
- * Usage (direct):
- *   node server/scripts/screenshot-test.mjs
- *
- * Usage (via shell wrapper — recommended):
- *   ./scripts/screenshot-test.sh
- *
- * Required:
- *   Cloudflare R2 credentials — set via the app Setup page (SQLite) or as env vars.
+ * This script is meant to be invoked by scripts/screenshot-test.sh.
  *
  * Output format (stdout):
  *   Progress lines are prefixed with "#" so the shell wrapper can skip them.
- *   Each successful upload prints:  IMG <tab> <name> <tab> <url>
+ *   Each successful capture prints: IMG <tab> <name> <tab> <path>
  *   Each failure prints:            ERR <tab> <name> <tab> <message>
- *
- * HOW TO VERIFY THE GENERATED SCREENSHOTS
- * ----------------------------------------
- * Open each downloaded image (or R2 URL) and check:
- *
- *   (i)  CORRECT QUOTE HIGHLIGHTED
- *        The text matching the expected quote (see TEST_CASES below) must be
- *        covered by a semi-transparent yellow highlight (~rgba 255,235,59 at
- *        40% opacity). Verify the highlighted words match the START and END
- *        of the expected quote — not just nearby text.
- *
- *   (ii) NOTHING ELSE HIGHLIGHTED
- *        Only the expected quote should be yellow. If a preceding tweet, a
- *        heading, or unrelated paragraph is also highlighted, the fuzzy
- *        matcher scored the wrong region — raise the match threshold or
- *        check the per-article search logic in services/highlighter.js.
- *
- *   (iii) NO OVERLAY
- *        No cookie banner, consent dialog, paywall, or dark modal should be
- *        visible. If only the site header / nav / article title appears (no
- *        article body), the consent wall was not dismissed. Check
- *        dismissPopups() in services/screenshotService.js, or verify that
- *        the Wayback Machine fallback loaded the archived version.
  *
  * KNOWN FIXED ISSUES (as of 2026-03-22)
  *   - SwissInfo: previously failed due to consent wall; now falls back to
@@ -60,8 +34,9 @@
  *     attribution — { author, date, domain } for the dark bar at the bottom
  */
 
+import fs from 'fs/promises';
+import path from 'path';
 import { captureQuoteScreenshot } from '../services/screenshotService.js';
-import { uploadImage } from '../services/imageHostService.js';
 import { scrapeArticle, shutdownPool } from '../services/scraperService.js';
 
 // Enable the full production code path: 8 s wait + dismissPopups + Wayback fallback.
@@ -107,6 +82,12 @@ const TEST_CASES = [
         quote: 'Institutional adoption is a balance sheet reality. $123.5 billion in Bitcoin ETF assets. $35.6 billion in tokenized real-world assets. Over $1 billion in daily on-chain settlement by a single bank. Sovereign wealth funds with billion-dollar Bitcoin positions. A consortium of the largest U.S. banks building a stablecoin. Visa and Mastercard running stablecoin settlement infrastructure. The question has shifted from "will institutions adopt crypto?" to "how fast will the infrastructure scale to meet institutional demand?"',
         attribution: { author: "Sherlock", date: "2-20-2026", domain: 'sherlock.xyz' },
     },
+    {
+        name: 'Stratechery — Apple/Google Siri quote',
+        url: 'https://stratechery.com/2026/tim-cooks-impeccable-timing/',
+        quote: 'The new Siri still hasn’t launched, and when it does, it will be with Google’s technology at the core',
+        attribution: { author: 'Ben Thompson', date: 'Apr 2026', domain: 'stratechery.com' },
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -140,10 +121,17 @@ async function main() {
                 throw new Error(`Buffer too small (${Buffer.isBuffer(buffer) ? buffer.length : typeof buffer} bytes)`);
             }
 
-            const { url: imageUrl } = await uploadImage(buffer);
-            log(`    ✓ uploaded (${(buffer.length / 1024).toFixed(0)} KB) → ${imageUrl}`);
+            const now = new Date();
+            const datetime = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+            const safeName = `${datetime}_${name.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '')}`;
+            const outputDir = path.join(path.dirname(new URL(import.meta.url).pathname), 'screenshots');
+            await fs.mkdir(outputDir, { recursive: true });
+            const outputPath = path.join(outputDir, `${safeName}.png`);
+            await fs.writeFile(outputPath, buffer);
+
+            log(`    ✓ saved (${(buffer.length / 1024).toFixed(0)} KB) → ${outputPath}`);
             // Parseable line read by the shell script
-            process.stdout.write(`IMG\t${name}\t${imageUrl}\n`);
+            process.stdout.write(`IMG\t${name}\t${outputPath}\n`);
         } catch (err) {
             log(`    ✗ ${err.message}`);
             process.stdout.write(`ERR\t${name}\t${err.message}\n`);

@@ -1,26 +1,22 @@
 #!/usr/bin/env bash
 # screenshot-test.sh
 #
-# Runs the screenshot pipeline on all problem URLs, uploads results to R2,
-# downloads the images to /tmp/raindrop-screenshots/, and prints a summary
-# with file paths ready for visual / AI-vision inspection.
+# Runs the screenshot pipeline on all problem URLs, saves them to
+# server/scripts/screenshots/ and prints a summary with file paths
+# ready for visual / AI-vision inspection.
 #
 # Usage:
 #   ./scripts/screenshot-test.sh
 #
 # After it finishes, hand the printed file paths to Claude Code (or open them
-# in an image viewer) and verify each image against the three criteria:
+# in an image viewer) and verify each image.
 #
-#   (i)  Correct quote highlighted in yellow
-#   (ii) Nothing else highlighted
-#   (iii) No cookie banner / overlay visible
-#
-# See server/scripts/screenshot-test.mjs for the full verification guide.
+# See server/scripts/screenshot-test.mjs for the full mission and verification guide.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUTPUT_DIR="/tmp/raindrop-screenshots"
+OUTPUT_DIR="$REPO_ROOT/server/scripts/screenshots"
 mkdir -p "$OUTPUT_DIR"
 
 # Point db.js at the server's data directory so getSetting() reads the correct SQLite file.
@@ -45,12 +41,8 @@ for line in "${lines[@]}"; do
     value="${rest#*$'\t'}"
 
     if [[ "$type" == "IMG" ]]; then
-        # Sanitise name → safe filename
-        safe_name="$(echo "$name" | tr ' /' '__' | tr -cd '[:alnum:]_-')"
-        dest="$OUTPUT_DIR/${safe_name}.png"
-        curl -sL "$value" -o "$dest"
+        dest="$value"
         echo "  ✓  $name"
-        echo "     R2    : $value"
         echo "     Local : $dest"
         echo ""
         image_paths+=("$dest")

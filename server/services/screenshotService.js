@@ -66,8 +66,30 @@ export const captureQuoteScreenshot = async (articleHtml, articleUrl, quoteText,
 
         if (articleHtml) {
             // ── Local HTML path: render pre-scraped content, no network needed ──
-            const styledHtml = wrapArticleHtml(articleHtml);
-            await page.setContent(styledHtml, { waitUntil: 'load' });
+            // Strip lazy-loading so images load immediately; without this, lazy
+            // images load after we measure scrollHeight, causing a 2000-3000px
+            // layout shift that misplaces the screenshot clip.
+            const styledHtml = wrapArticleHtml(
+                articleHtml.replace(/\sloading=["']lazy["']/gi, '')
+            );
+            // networkidle0 waits for all images to finish loading so the layout
+            // is stable before we measure scrollHeight.
+            await page.setContent(styledHtml, { waitUntil: 'networkidle0', timeout: 30000 })
+                .catch(() => page.setContent(styledHtml, { waitUntil: 'load' }));
+
+            // Expand the viewport to the fully-loaded document height so that
+            // findQuoteInDOM measurements are taken against the stable final layout.
+            // Using a very large initial viewport (50000px) and then clamping avoids
+            // a second reflow caused by expanding the viewport after layout is done.
+            const initialScrollHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+            const stableHeight = Math.max(initialScrollHeight, 8000);
+            await page.setViewport({
+                width: 390,
+                height: stableHeight,
+                isMobile: true,
+                hasTouch: true,
+                deviceScaleFactor: 2,
+            });
 
             findResult = await page.evaluate(findQuoteInDOM, quoteText);
 
@@ -211,65 +233,10 @@ export const captureQuoteScreenshot = async (articleHtml, articleUrl, quoteText,
             }
         }
 
-        // Step 2: Compute square padded clip region
-        const clip = await page.evaluate((foundResult) => {
-            const viewportWidth = window.innerWidth;
-            const pageHeight = document.documentElement.scrollHeight;
-
-            if (foundResult.found && foundResult.rect) {
-                const padding = 15;
-                const barHeight = 40;
-
-                // Width: highlight width + padding, capped at viewport
-                const rawWidth = foundResult.rect.width + (padding * 2);
-                const size = Math.min(rawWidth, viewportWidth);  // size = clip width
-
-                let x = foundResult.rect.x - padding;
-                if (x < 0) x = 0;
-                if (x + size > viewportWidth) x = viewportWidth - size;
-
-                // Height: at least as tall as the width (square), but expands to
-                // fully contain taller quotes (multi-line, math-heavy, etc.)
-                const rawHeight = foundResult.rect.height + (padding * 2);
-                const height = Math.max(size, rawHeight);
-
-                // Top-align to the start of the highlight so the quote beginning
-                // is always visible, even if the clip can't fit the full quote.
-                let y = foundResult.rect.y + window.scrollY - padding;
-                if (y < 0) y = 0;
-
-                const totalHeight = height + barHeight;
-                if (y + totalHeight > pageHeight) y = pageHeight - totalHeight;
-
-                return { x, y, size, height, totalHeight, barHeight };
-            } else {
-                // Fallback: If we couldn't find the text, try to clip to the article element
-                const article = document.querySelector('article[data-testid="tweet"]');
-                if (article) {
-                    const r = article.getBoundingClientRect();
-                    const barHeight = 40;
-                    let x = r.x;
-                    let y = r.y + window.scrollY;
-                    let size = Math.min(r.width, viewportWidth);
-
-                    // Keep it square if possible
-                    if (size < r.height) {
-                        size = Math.min(r.height, viewportWidth);
-                    }
-
-                    if (x < 0) x = 0;
-                    if (y < 0) y = 0;
-                    if (x + size > viewportWidth) x = viewportWidth - size;
-
-                    const totalHeight = size + barHeight;
-                    return { x, y, size, totalHeight, barHeight };
-                }
-
-                // Ultimate Fallback: full viewport width square-ish
-                const size = Math.min(viewportWidth, 700);
-                return { x: 0, y: 0, size, totalHeight: size + 40, barHeight: 40 };
-            }
-        }, findResult);
+        // Step 2: Compute square padded clip region in Node (pure function, no browser context needed)
+        const viewportWidth = 390;
+        const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+        const clip = computeClip(findResult, viewportWidth, pageHeight);
 
         // Step 3: Inject attribution bar at the bottom of the clip
         const attrText = formatAttribution(attribution);
@@ -297,8 +264,21 @@ export const captureQuoteScreenshot = async (articleHtml, articleUrl, quoteText,
             document.body.appendChild(bar);
         }, attrText, clip);
 
-        // Step 4: Take the screenshot
-
+        // Step 4: Ensure the viewport is tall enough to encompass the clip region.
+        // Puppeteer's clip-based screenshot only renders content within the current
+        // viewport height. For long articles (scrollHeight >> 8000px), the quote may
+        // sit below the current viewport boundary, producing a blank/wrong capture.
+        // Resizing to clip.y + clip.totalHeight forces the browser to lay out that region.
+        const requiredHeight = Math.ceil(clip.y + clip.totalHeight);
+        if (requiredHeight > 8000) {
+            await page.setViewport({
+                width: 390,
+                height: requiredHeight,
+                isMobile: true,
+                hasTouch: true,
+                deviceScaleFactor: 2,
+            });
+        }
 
         const screenshotBuffer = await page.screenshot({
             type: 'png',
@@ -533,6 +513,43 @@ function formatAttribution({ author, date, domain }) {
     if (domain) parts.push(domain);
 
     return parts.join(' · ');
+}
+
+/**
+ * Pure clip-box computation — runs in Node so it's fully unit-testable.
+ *
+ * Always spans the full viewport width (x=0, size=viewportWidth) so no text
+ * is ever cropped horizontally, regardless of how wide the highlighted span is.
+ *
+ * @param {{ found: boolean, rect: { x, y, width, height } | null }} foundResult
+ * @param {number} viewportWidth  - Puppeteer viewport width (390)
+ * @param {number} pageHeight     - document.documentElement.scrollHeight
+ */
+export function computeClip(foundResult, viewportWidth, pageHeight) {
+    const barHeight = 40;
+
+    if (foundResult.found && foundResult.rect) {
+        const padding = 30;
+
+        // Always span the full horizontal breadth — never crop text on the right
+        const x = 0;
+        const size = viewportWidth;
+
+        const rawHeight = foundResult.rect.height + (padding * 2);
+        const height = Math.max(size, rawHeight);
+
+        let y = foundResult.rect.y - padding;
+        if (y < 0) y = 0;
+
+        const totalHeight = height + barHeight;
+        if (y + totalHeight > pageHeight) y = Math.max(0, pageHeight - totalHeight);
+
+        return { x, y, size, height, totalHeight, barHeight };
+    }
+
+    // Fallback: full viewport square
+    const size = viewportWidth;
+    return { x: 0, y: 0, size, height: size, totalHeight: size + barHeight, barHeight };
 }
 
 export { formatAttribution };

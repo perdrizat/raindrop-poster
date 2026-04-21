@@ -63,9 +63,11 @@ export const findQuoteInDOM = (quote) => {
 
                 // "First 3 words" heuristic: before committing to this start
                 // position, verify the 2nd (and 3rd) quote words appear among
-                // the next 6 tokens. Prevents false starts on common words.
+                // the NEXT 2 tokens only. A window of 6 was too permissive —
+                // e.g. "the" in "the State of Cupertino" would fire because
+                // "new" and "siri" appeared 4-5 tokens later.
                 if (secondQuoteWord) {
-                    const nearby = tokens.slice(i + 1, i + 7).map(function(t) { return t.word; });
+                    const nearby = tokens.slice(i + 1, i + 3).map(function(t) { return t.word; });
                     if (nearby.indexOf(secondQuoteWord) === -1) continue;
                     if (thirdQuoteWord && nearby.indexOf(thirdQuoteWord) === -1) continue;
                 }
@@ -132,6 +134,7 @@ export const findQuoteInDOM = (quote) => {
                 rects.push(clientRectsList[i]);
             }
 
+
             if (rects.length === 0) {
                 // Fallback: wrap nodes in <mark> tags (used by jsdom in tests)
                 const nodesToWrap = new Set();
@@ -174,20 +177,33 @@ export const findQuoteInDOM = (quote) => {
                 return { found: false, rect: null };
             }
 
+            // getClientRects() returns viewport-relative coordinates. After scrollIntoView()
+            // the page has scrolled, so we must add window.scrollX/Y to convert to
+            // document-absolute coordinates (which is what page.screenshot({ clip }) expects).
+            const scrollX = window.scrollX || 0;
+            const scrollY = window.scrollY || 0;
+
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             for (let i = 0; i < rects.length; i++) {
                 const r = rects[i];
                 if (r.width === 0 || r.height === 0) continue;
-                if (r.x < minX) minX = r.x;
-                if (r.y < minY) minY = r.y;
-                if (r.x + r.width  > maxX) maxX = r.x + r.width;
-                if (r.y + r.height > maxY) maxY = r.y + r.height;
+                if (r.x + scrollX < minX) minX = r.x + scrollX;
+                if (r.y + scrollY < minY) minY = r.y + scrollY;
+                if (r.x + scrollX + r.width  > maxX) maxX = r.x + scrollX + r.width;
+                if (r.y + scrollY + r.height > maxY) maxY = r.y + scrollY + r.height;
             }
+
+            // Build a short "context window" of tokens around the start/end
+            // so we can see exactly where the match anchored in the article
+            // (e.g. "...in the State of Cupertino. [the] new siri still...").
+            const ctxBefore = 6, ctxAfter = 6;
+            const startCtx = tokens.slice(Math.max(0, bestStart - ctxBefore), Math.min(tokens.length, bestStart + ctxAfter)).map(t => t.word).join(' ');
+            const endCtx   = tokens.slice(Math.max(0, bestEnd - ctxBefore),   Math.min(tokens.length, bestEnd   + ctxAfter)).map(t => t.word).join(' ');
 
             return {
                 found: true,
                 rect: { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
-                debugInfo: { maxScore, bestStart, bestEnd, startWord: startToken.word, endWord: endToken.word, quoteLength }
+                debugInfo: { maxScore, bestStart, bestEnd, startWord: startToken.word, endWord: endToken.word, quoteLength, startCtx, endCtx }
             };
         }
 

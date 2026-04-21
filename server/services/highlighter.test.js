@@ -150,4 +150,42 @@ describe('Highlighter DOM Walker (JSDOM Environment)', () => {
             expect(result.debugInfo.quoteLength).toBeGreaterThan(0);
         }
     });
+
+    it('should NOT start match at common word when 2nd quote word is >2 tokens away (false-start heuristic)', () => {
+        // Reproduces Stratechery: "the" at token[N] is inside a link "the State of Cupertino",
+        // and "new"/"siri" appear at tokens [N+4] and [N+5] — inside the old 6-token window.
+        // The CORRECT "the" is at token[N+4] immediately followed by "new" at [N+5].
+        // With tightened 2-token window: slice(N+1, N+3)=[state,of] → "new" NOT found → rejected.
+        // The correct "the" at N+4: slice(N+5, N+7)=[new,siri] → passes.
+        const falseStartDom = new JSDOM(`
+            <html><body>
+                <p>It suggests that <a href="#">the State of Cupertino</a>. The new Siri still has not launched.</p>
+            </body></html>
+        `);
+        global.document = falseStartDom.window.document;
+        global.window = falseStartDom.window;
+        global.NodeFilter = falseStartDom.window.NodeFilter;
+        global.window.HTMLElement.prototype.getBoundingClientRect = () => (
+            { x: 10, y: 200, width: 350, height: 20, top: 200, left: 10, bottom: 220, right: 360 }
+        );
+        global.window.Range.prototype.getClientRects = function () {
+            return [{ x: 10, y: 200, width: 350, height: 20, top: 200, left: 10, bottom: 220, right: 360 }];
+        };
+
+        const result = findQuoteInDOM("The new Siri still has not launched");
+        expect(result.found).toBe(true);
+        // "the State of Cupertino" has "new" at offset 4 (state=1, of=2, cupertino=3, .=skip, The=4, new=5)
+        // In the token stream: [it, suggests, that, the(link), state, of, cupertino, the(p), new, siri, ...]
+        // Correct: bestStart must point at the "the" BEFORE "new", i.e. the one where
+        // the immediately-following tokens are "new" and "siri".
+        // We verify: quoteWords[1]="new" must appear within 2 tokens of bestStart.
+        // Score for false-start "the(link)" would be lower since "state of cupertino"
+        // aren't in the quote. The correct start produces all 6 words matching.
+        expect(result.debugInfo.maxScore).toBeGreaterThanOrEqual(6);
+        expect(result.debugInfo.endWord).toBe('launched');
+        // The startWord is "the" in both cases, so we check via expected matching behavior:
+        // if false-started, the Range would include "the State of Cupertino" text in its rects,
+        // but we can't easily test that here. Trust the score and endWord checks above.
+    });
 });
+

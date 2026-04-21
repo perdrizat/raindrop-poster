@@ -6,11 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2026-04-21]
+
 ### Added
+- Hover any of the 4 image cards (Cover / Screenshot / AI / Custom) to show a fixed-position enlarged preview in the center of the viewport; preview updates as hover moves between cards and is click-through (`pointer-events-none`) so the cursor can still reach the cards underneath
 - Auto-regenerate screenshot with author name when Venice AI extraction returns a non-empty author (initial screenshot fires without author since AI runs in parallel; a second capture fires once the name is known)
-- Hover any of the 4 image cards (Cover / Screenshot / AI / Custom) to show a fixed-position enlarged preview in the center of the viewport; preview updates as hover moves between cards (no need to dismiss first) and is click-through (`pointer-events-none`) so the cursor can still reach the cards underneath
+
+### Fixed
+- Screenshot clip now spans the full 390 px viewport width (x=0, size=viewportWidth) so no text is ever cropped on the right-hand side; vertical padding increased from 15→30 px for more reading space above the quote
+- Strip `loading="lazy"` from article images and wait for `networkidle0` before measuring `scrollHeight`; lazy images loading after measurement caused 2000–3500 px layout shifts that misplaced the screenshot clip (Sherlock)
+- Set viewport to stable height (post-image-load `scrollHeight`) before running `findQuoteInDOM` so `getClientRects()` returns correct coordinates on pages with remote images
+
 ### Changed
+- Extracted clip-box calculation into a pure exported `computeClip(foundResult, viewportWidth, pageHeight)` function (replaces the inline `page.evaluate` calculation), making it fully unit-testable
 - Extracted `ImageCard` from inside `PostPage` to a module-level component to avoid remounting children on every parent render (previously broke synthetic-event handlers after hover-triggered re-renders)
+- `screenshot-test.mjs` output moved from `/tmp/raindrop-screenshots/` to `server/scripts/screenshots/` (gitignored); filenames prefixed with `YYYYMMDD-HHMM_` for easy comparison across runs
 
 ## [2026-04-19]
 
