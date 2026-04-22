@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2026-04-22]
+
+### Fixed
+- Fixed `HighlightedPostEditor` (`contentEditable` div) missing `aria-labelledby` to satisfy accessibility-based test selectors; all 69 tests in `PostPage.test.jsx` now pass
+- Character limit logic now produces accurate space budgets by only counting post text and URLs (Attribution and Quotes are no longer appended to the post body, freeing up ~200 chars)
+- Bluesky, Twitter/X, and Mastodon character limits now correctly treat URLs at a fixed 23-character cost, matching platform standards
+- Character limit budget now accounts for the 2-character separator (`\n\n`) between the post body and the URL
+
+### Changed
+- Post editor migrated from `<textarea>` + overlay to a single `contentEditable` `<div>` with inline `<span>` overage highlighting — the red highlight is now part of the text flow, eliminating overlay alignment drift
+- Post box now appears above the Quote box in PostPage so it's the primary focus on load
+- Post box uses a distinct amber background (`bg-amber-50 / dark:bg-amber-900/20`) to visually differentiate it from the Quote box
+- All posts strictly follow the `[Post Text]\n\n[URL]` format; removed "via " and "Says Author" branding from the text body to keep posts clean and concise (branding remains visual-only in screenshots)
+
 ## [2026-04-21]
 
 ### Added

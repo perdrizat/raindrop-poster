@@ -26,6 +26,32 @@ const mockArticles = [
     { _id: 3, title: 'Article Three', link: 'https://example.com/3', highlight: 'Highlight 3', created: '2026-01-03' },
 ];
 
+// Place the caret inside a contenteditable element at a given text-offset.
+const setCursorAtOffset = (el, offset) => {
+    const range = document.createRange();
+    let remaining = offset;
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+    let node;
+    let placed = false;
+    while ((node = walker.nextNode())) {
+        const len = node.textContent.length;
+        if (remaining <= len) {
+            range.setStart(node, remaining);
+            range.setEnd(node, remaining);
+            placed = true;
+            break;
+        }
+        remaining -= len;
+    }
+    if (!placed) {
+        range.selectNodeContents(el);
+        range.collapse(false);
+    }
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+};
+
 describe('PostPage — scaffold + navigation', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -262,11 +288,11 @@ describe('PostPage — post section + emojis', () => {
         });
     });
 
-    it('renders an empty post textarea initially', async () => {
+    it('renders an empty post editor initially', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
         render(<PostPage selectedTag="important" />);
-        const textarea = await screen.findByLabelText(/^post$/i);
-        expect(textarea.value).toBe('');
+        const editor = await screen.findByLabelText(/^post$/i);
+        expect(editor.textContent).toBe('');
     });
 
     it('updates character count as user types', async () => {
@@ -289,64 +315,64 @@ describe('PostPage — post section + emojis', () => {
     it('inserts emoji at cursor position when button is clicked', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
         render(<PostPage selectedTag="important" />);
-        const textarea = await screen.findByLabelText(/^post$/i);
+        const editor = await screen.findByLabelText(/^post$/i);
 
-        await userEvent.type(textarea, 'hello world');
+        await userEvent.type(editor, 'hello world');
         // Move cursor between hello and space
-        textarea.focus();
-        textarea.setSelectionRange(5, 5);
+        editor.focus();
+        setCursorAtOffset(editor, 5);
 
         await userEvent.click(screen.getByRole('button', { name: '🔥' }));
-        expect(textarea.value).toBe('hello🔥 world');
+        expect(editor.textContent).toBe('hello🔥 world');
     });
 
-    it('appends emoji at end when textarea is not focused', async () => {
+    it('appends emoji at end when editor is not focused', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
         render(<PostPage selectedTag="important" />);
-        const textarea = await screen.findByLabelText(/^post$/i);
-        await userEvent.type(textarea, 'hello');
-        textarea.blur();
+        const editor = await screen.findByLabelText(/^post$/i);
+        await userEvent.type(editor, 'hello');
+        editor.blur();
 
         await userEvent.click(screen.getByRole('button', { name: '🤯' }));
-        expect(textarea.value).toBe('hello🤯');
+        expect(editor.textContent).toBe('hello🤯');
     });
 
-    it('renders a highlight overlay marking chars past the strictest limit when over', async () => {
+    it('renders an inline highlight marking chars past the strictest limit when over', async () => {
         saveSettings({
             ...loadSettings(),
             bufferChannels: [{ id: 'c1', service: 'bluesky' }],
         });
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
         render(<PostPage selectedTag="important" />);
-        const textarea = await screen.findByLabelText(/^post$/i);
+        const editor = await screen.findByLabelText(/^post$/i);
 
-        await userEvent.click(textarea);
+        await userEvent.click(editor);
         await userEvent.paste('x'.repeat(300));
 
-        const overlay = screen.getByTestId('post-overage-overlay');
-        const highlighted = overlay.querySelector('[data-testid="post-overage-highlight"]');
-        expect(highlighted).toBeTruthy();
+        const highlighted = await screen.findByTestId('post-overage-highlight');
+        // Highlight span lives inside the editor, not in a separate overlay
+        expect(editor.contains(highlighted)).toBe(true);
         // highlighted segment contains only the excess x's, not the full post
         expect(highlighted.textContent.length).toBeGreaterThan(0);
         expect(highlighted.textContent.length).toBeLessThan(300);
     });
 
-    it('does NOT render the highlight overlay when post text is under the limit', async () => {
+    it('does NOT render the inline highlight when post text is under the limit', async () => {
         saveSettings({
             ...loadSettings(),
             bufferChannels: [{ id: 'c1', service: 'bluesky' }],
         });
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
         render(<PostPage selectedTag="important" />);
-        const textarea = await screen.findByLabelText(/^post$/i);
+        const editor = await screen.findByLabelText(/^post$/i);
 
-        await userEvent.click(textarea);
+        await userEvent.click(editor);
         await userEvent.paste('short post');
 
-        expect(screen.queryByTestId('post-overage-overlay')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('post-overage-highlight')).not.toBeInTheDocument();
     });
 
-    it('shows Bluesky character limit warning when post text (excluding URL) exceeds 277 chars', async () => {
+    it('shows Bluesky character limit warning when post text (plus fixed URL) exceeds 300 chars', async () => {
         saveSettings({
             ...loadSettings(),
             bufferChannels: [{ id: 'c1', service: 'bluesky' }],
@@ -354,14 +380,14 @@ describe('PostPage — post section + emojis', () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
         render(<PostPage selectedTag="important" />);
         const textarea = await screen.findByLabelText(/^post$/i);
-
+ 
         const longText = 'x'.repeat(301);
         await userEvent.click(textarea);
         // Paste instead of typing char-by-char for speed
         await userEvent.paste(longText);
-
+ 
         expect(screen.getByText(/bluesky/i)).toBeInTheDocument();
-        expect(screen.getByText(/277/)).toBeInTheDocument();
+        expect(screen.getByText(/300/)).toBeInTheDocument();
     });
 
     it('does NOT show Mastodon warning when only Bluesky is configured', async () => {
@@ -375,7 +401,7 @@ describe('PostPage — post section + emojis', () => {
         expect(screen.queryByText(/mastodon/i)).not.toBeInTheDocument();
     });
 
-    it('does NOT show Bluesky warning when post text (excluding URL) is at the 277 boundary', async () => {
+    it('does NOT show Bluesky warning when post text (plus fixed URL) is at the 300 boundary', async () => {
         saveSettings({
             ...loadSettings(),
             bufferChannels: [{ id: 'c1', service: 'bluesky' }],
@@ -383,12 +409,171 @@ describe('PostPage — post section + emojis', () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
         render(<PostPage selectedTag="important" />);
         const textarea = await screen.findByLabelText(/^post$/i);
+ 
+        // 275 chars post + 2 newlines + 23 chars URL = 300
+        await userEvent.click(textarea);
+        await userEvent.paste('x'.repeat(275));
+ 
+        expect(screen.queryByText(/exceeds.*bluesky/i)).not.toBeInTheDocument();
+    });
 
-        // Attribution adds 21 non-URL chars (\n\n"Highlight 1"\n\nvia ), so 256 + 21 = 277
+    it('shows Twitter character limit warning and highlights overage when post exceeds 280 chars', async () => {
+        saveSettings({
+            ...loadSettings(),
+            bufferChannels: [{ id: 'tw1', service: 'twitter' }],
+        });
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        render(<PostPage selectedTag="important" />);
+        const textarea = await screen.findByLabelText(/^post$/i);
+
+        await userEvent.click(textarea);
+        await userEvent.paste('x'.repeat(350));
+
+        await waitFor(() => {
+            expect(screen.getByText(/twitter/i)).toBeInTheDocument();
+            expect(screen.getByText(/280/)).toBeInTheDocument();
+            expect(screen.getByTestId('post-overage-highlight')).toBeInTheDocument();
+        });
+    });
+
+    it('treats Twitter URLs as a fixed 23 chars regardless of actual URL length (t.co rule)', async () => {
+        // Long article URL (90 chars) would otherwise eat huge amounts of the 280 budget.
+        // With the t.co 23-char rule: 255 post + 2 newlines + 23 URL = 280 exactly -> no overage.
+        const longUrlArticle = [{
+            _id: 99,
+            title: 'Long URL',
+            link: 'https://www.taurushq.com/blog/defending-cold-wallets-guidelines-for-financial-institutions',
+            highlight: '',
+            created: '2026-01-01',
+        }];
+        saveSettings({
+            ...loadSettings(),
+            bufferChannels: [{ id: 'tw1', service: 'twitter' }],
+        });
+        fetchTaggedItems.mockResolvedValueOnce(longUrlArticle);
+        render(<PostPage selectedTag="important" />);
+        const textarea = await screen.findByLabelText(/^post$/i);
+
+        await userEvent.click(textarea);
+        await userEvent.paste('x'.repeat(255));
+
+        // 255 + 2 + 23 = 280 -> at the boundary, no overage
+        expect(screen.queryByTestId('post-overage-highlight')).not.toBeInTheDocument();
+        expect(screen.queryByText(/exceeds.*twitter/i)).not.toBeInTheDocument();
+    });
+
+    it('triggers Twitter overage at 256 chars with a long URL (23-char URL budget)', async () => {
+        const longUrlArticle = [{
+            _id: 99,
+            title: 'Long URL',
+            link: 'https://www.taurushq.com/blog/defending-cold-wallets-guidelines-for-financial-institutions',
+            highlight: '',
+            created: '2026-01-01',
+        }];
+        saveSettings({
+            ...loadSettings(),
+            bufferChannels: [{ id: 'tw1', service: 'twitter' }],
+        });
+        fetchTaggedItems.mockResolvedValueOnce(longUrlArticle);
+        render(<PostPage selectedTag="important" />);
+        const textarea = await screen.findByLabelText(/^post$/i);
+
         await userEvent.click(textarea);
         await userEvent.paste('x'.repeat(256));
 
-        expect(screen.queryByText(/exceeds.*bluesky/i)).not.toBeInTheDocument();
+        // 256 + 2 + 23 = 281 -> 1 char over
+        await waitFor(() => {
+            expect(screen.getByTestId('post-overage-highlight')).toBeInTheDocument();
+        });
+    });
+
+    it('uses server bufferChannels (from /api/system/status) for char limit when localStorage has no service types', async () => {
+        // localStorage has channels without service types (stale format)
+        saveSettings({
+            ...loadSettings(),
+            bufferChannels: [{ id: 'bsky-1' }], // no service field
+        });
+        // Server returns the same channel with service type
+        globalThis.fetch = vi.fn().mockImplementation((url) => {
+            if (url === '/api/system/status') {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({ bufferChannels: [{ id: 'bsky-1', service: 'bluesky' }] }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: async () => ({ imageData: null }) });
+        });
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        render(<PostPage selectedTag="important" />);
+        const textarea = await screen.findByLabelText(/^post$/i);
+
+        await userEvent.click(textarea);
+        await userEvent.paste('x'.repeat(500));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('post-overage-highlight')).toBeInTheDocument();
+        });
+    });
+
+    it('applies strictest known limit when NO buffer channels are configured', async () => {
+        // localStorage has no channels at all
+        saveSettings({
+            ...loadSettings(),
+            bufferChannels: [],
+        });
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        render(<PostPage selectedTag="important" />);
+        const textarea = await screen.findByLabelText(/^post$/i);
+
+        await userEvent.click(textarea);
+        await userEvent.paste('x'.repeat(660));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('post-overage-highlight')).toBeInTheDocument();
+        });
+    });
+
+    it('applies strictest known limit when channels have no service type (stale SQLite data)', async () => {
+        saveSettings({
+            ...loadSettings(),
+            bufferChannels: [{ id: 'unknown-1' }], // no service field at all
+        });
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        render(<PostPage selectedTag="important" />);
+        const textarea = await screen.findByLabelText(/^post$/i);
+
+        await userEvent.click(textarea);
+        await userEvent.paste('x'.repeat(500));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('post-overage-highlight')).toBeInTheDocument();
+        });
+    });
+
+    it('renders Post section before Quote section in the DOM', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        render(<PostPage selectedTag="important" />);
+        await screen.findByLabelText(/^post$/i);
+
+        const postEditor = screen.getByLabelText(/^post$/i);
+        const quoteEditor = screen.getByLabelText(/^quote$/i);
+        expect(
+            postEditor.compareDocumentPosition(quoteEditor) & Node.DOCUMENT_POSITION_FOLLOWING
+        ).toBeTruthy();
+    });
+
+    it('Post box has a distinct background class not shared with the Quote box', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        render(<PostPage selectedTag="important" />);
+        await screen.findByLabelText(/^post$/i);
+
+        const postBox = screen.getByLabelText(/^post$/i).closest('[class*="rounded-xl"]');
+        const quoteBox = screen.getByLabelText(/^quote$/i).closest('[class*="rounded-xl"]');
+
+        // Post box must carry an amber/yellow background class
+        expect(postBox.className).toMatch(/bg-amber/);
+        // Quote box must NOT share that amber class
+        expect(quoteBox.className).not.toMatch(/bg-amber/);
     });
 });
 
@@ -450,8 +635,8 @@ describe('PostPage — AI proposals panel', () => {
         const proposalBtn = await screen.findByRole('button', { name: /select this proposal/i });
         await userEvent.click(proposalBtn);
 
-        const textarea = screen.getByLabelText(/^post$/i);
-        expect(textarea.value).toBe('My proposed post');
+        const editor = screen.getByLabelText(/^post$/i);
+        expect(editor.textContent).toBe('My proposed post');
     });
 
     it('clicking a proposal switches carousel to image options panel', async () => {
@@ -804,7 +989,7 @@ describe('PostPage — publishing + overlay', () => {
         expect(imageInfo).toBeTruthy();
     });
 
-    it('constructs full text with attribution when no image is selected', async () => {
+    it('constructs full text without attribution even when no image is selected', async () => {
         saveSettings({
             ...loadSettings(),
             bufferChannels: [{ id: 'c1', service: 'linkedin' }],
@@ -814,15 +999,15 @@ describe('PostPage — publishing + overlay', () => {
         render(<PostPage selectedTag="important" />);
         const textarea = await screen.findByLabelText(/^post$/i);
         await userEvent.type(textarea, 'Check this out');
-
-        // Leave selectedImageOption as 'screenshot' but screenshot has no image → no image path
+ 
         await userEvent.click(screen.getByRole('button', { name: /drafts/i }));
-
+ 
         await waitFor(() => expect(publishPost).toHaveBeenCalled());
         const [fullText] = publishPost.mock.calls[0];
-        // With no image: include attribution + via URL
-        expect(fullText).toContain('Check this out');
-        expect(fullText).toContain('via https://example.com/1');
+        // Strictly post + URL
+        expect(fullText).toBe('Check this out\n\nhttps://example.com/1');
+        expect(fullText).not.toContain('via');
+        expect(fullText).not.toContain('Says');
     });
 
     it('shows success overlay with URL after successful publish', async () => {

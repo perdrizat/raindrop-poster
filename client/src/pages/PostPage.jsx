@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect, useImperativeHandle, forwardRef } from 'react';
 import { fetchTaggedItems, updateBookmarkTags } from '../services/raindropioService';
 import { generateProposals } from '../services/aiService';
 import { publishPost } from '../services/publishService';
@@ -12,6 +12,139 @@ const parseHashIndex = () => {
     const n = parseInt(raw, 10);
     return Number.isInteger(n) && n >= 1 ? n - 1 : 0;
 };
+
+const escapeHtml = (s) => s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+const getCursorOffsetIn = (el) => {
+    const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+    if (!sel || sel.rangeCount === 0) return 0;
+    const range = sel.getRangeAt(0);
+    if (!el.contains(range.endContainer)) return 0;
+    const pre = range.cloneRange();
+    pre.selectNodeContents(el);
+    pre.setEnd(range.endContainer, range.endOffset);
+    return pre.toString().length;
+};
+
+const setCursorOffsetIn = (el, offset) => {
+    const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+    if (!sel) return;
+    const range = document.createRange();
+    let remaining = offset;
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+    let node;
+    let placed = false;
+    while ((node = walker.nextNode())) {
+        const len = node.textContent.length;
+        if (remaining <= len) {
+            range.setStart(node, remaining);
+            range.setEnd(node, remaining);
+            placed = true;
+            break;
+        }
+        remaining -= len;
+    }
+    if (!placed) {
+        range.selectNodeContents(el);
+        range.collapse(false);
+    }
+    sel.removeAllRanges();
+    sel.addRange(range);
+};
+
+// Contenteditable post editor with inline red highlight for characters past the limit.
+// The highlight is part of the text flow (an actual <span> inside the editor), not an overlay.
+const HighlightedPostEditor = forwardRef(({ id, value, onChange, maxAllowedLen, placeholder, className }, ref) => {
+    const elRef = useRef(null);
+
+    const hasOverage = maxAllowedLen != null && value.length > maxAllowedLen;
+    const desiredHtml = hasOverage
+        ? `${escapeHtml(value.slice(0, maxAllowedLen))}<span data-testid="post-overage-highlight" class="bg-red-200 dark:bg-red-900/50 rounded-sm">${escapeHtml(value.slice(maxAllowedLen))}</span>`
+        : escapeHtml(value);
+
+    useLayoutEffect(() => {
+        const el = elRef.current;
+        if (!el) return;
+        if (el.innerHTML === desiredHtml) return;
+        const isFocused = document.activeElement === el;
+        const savedOffset = isFocused ? getCursorOffsetIn(el) : null;
+        el.innerHTML = desiredHtml;
+        if (savedOffset !== null) setCursorOffsetIn(el, savedOffset);
+    }, [desiredHtml]);
+
+    useImperativeHandle(ref, () => ({
+        focus: () => elRef.current?.focus(),
+        element: () => elRef.current,
+        getCursorOffset: () => {
+            const el = elRef.current;
+            return el ? getCursorOffsetIn(el) : 0;
+        },
+        setCursorOffset: (offset) => {
+            const el = elRef.current;
+            if (el) setCursorOffsetIn(el, offset);
+        },
+    }), []);
+
+    const handleInput = (e) => {
+        onChange(e.currentTarget.textContent || '');
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const el = elRef.current;
+            if (!el) return;
+            const offset = getCursorOffsetIn(el);
+            const next = value.slice(0, offset) + '\n' + value.slice(offset);
+            onChange(next);
+            requestAnimationFrame(() => {
+                if (elRef.current) setCursorOffsetIn(elRef.current, offset + 1);
+            });
+        }
+    };
+
+    const handlePaste = (e) => {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData)?.getData('text/plain') || '';
+        const el = e.currentTarget;
+        const offset = getCursorOffsetIn(el);
+        const next = value.slice(0, offset) + text + value.slice(offset);
+        onChange(next);
+        requestAnimationFrame(() => {
+            if (elRef.current) setCursorOffsetIn(elRef.current, offset + text.length);
+        });
+    };
+
+    return (
+        <div className="relative flex-1">
+            {!value && placeholder && (
+                <div
+                    aria-hidden="true"
+                    className="absolute top-3 left-3 pointer-events-none text-gray-400 dark:text-gray-500 leading-relaxed font-sans select-none"
+                >
+                    {placeholder}
+                </div>
+            )}
+            <div
+                ref={elRef}
+                id={id}
+                role="textbox"
+                aria-multiline="true"
+                aria-labelledby={id ? `${id}-label` : undefined}
+                contentEditable
+                suppressContentEditableWarning
+                onInput={handleInput}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+                className={className}
+                style={{ resize: 'vertical', overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+            />
+        </div>
+    );
+});
 
 
 const ImageCard = ({ id, label, imageSrc, isLoading, error, onRetry, onActivate, disabled, placeholder, selectedOption, onSelect, onHover }) => {
@@ -80,8 +213,6 @@ const PostPage = ({ selectedTag }) => {
     const [proposals, setProposals] = useState([]);
     const [isGenerating, setIsGenerating] = useState(false);
     const [generationError, setGenerationError] = useState(null);
-    const [extractedAuthor, setExtractedAuthor] = useState(null);
-    const [scrapeData, setScrapeData] = useState(null);
 
     // Quote + metadata (editable)
     const [quote, setQuote] = useState('');
@@ -116,6 +247,9 @@ const PostPage = ({ selectedTag }) => {
 
     // Hover preview: { id, src } of currently-hovered image card, or null
     const [hoveredImage, setHoveredImage] = useState(null);
+
+    // Buffer channels with service types (fetched from server; localStorage may be stale)
+    const [bufferChannels, setBufferChannels] = useState(() => loadSettings().bufferChannels || []);
 
     // Publishing state
     const [isPublishing, setIsPublishing] = useState(false);
@@ -155,6 +289,15 @@ const PostPage = ({ selectedTag }) => {
     useEffect(() => {
         if (selectedTag) loadArticles();
     }, [selectedTag, loadArticles]);
+
+    useEffect(() => {
+        fetch('/api/system/status')
+            .then(r => r.ok ? r.json() : null)
+            .then(status => {
+                if (status?.bufferChannels?.length) setBufferChannels(status.bufferChannels);
+            })
+            .catch(() => { });
+    }, []);
 
     useEffect(() => {
         const next = `#${currentIndex + 1}`;
@@ -224,8 +367,6 @@ const PostPage = ({ selectedTag }) => {
             const results = await generateProposals(article, customPrompt, signal);
             if (signal?.aborted) return;
             setProposals(results.proposals || []);
-            setExtractedAuthor(results.author || null);
-            setScrapeData(results.scrapeData || null);
             if (results.author) {
                 setAuthor(prev => prev ? prev : results.author);
                 // Re-capture screenshot now that we have the author name
@@ -278,71 +419,75 @@ const PostPage = ({ selectedTag }) => {
         captureScreenshot(currentArticle, signal);
     }, [currentArticle, triggerGeneration, captureScreenshot]);
 
-    // Char limit warnings. Bluesky limit is 277: its facet system caps every URL at 23 chars
-    // regardless of actual length, so we exclude the URL from the count and cap at 300 - 23 = 277.
-    const CHAR_LIMITS = { bluesky: 277, mastodon: 500 };
-    const URL_EXCLUDED_SERVICES = new Set(['bluesky']);
+    // Char limit warnings. We count only postContent + URL (no attribution or quote).
+    // Almost all modern social services (BSky, Twitter, Mastodon, Threads) weight URLs 
+    // at a fixed cost regardless of actual length.
+    // const CHAR_LIMITS = { bluesky: 300, mastodon: 500, twitter: 280, threads: 500 };
+    const CHAR_LIMITS = { bluesky: 300, mastodon: 500, twitter: 300, threads: 500 }; // temp 300 for Twitter
+    const SHORTENED_URL_LEN = 23;
 
-    const computeFullText = () => {
-        // This is approximate; exact final text is built at publish time.
-        // Used only for char-limit warnings.
+    const computeFullText = (service = null) => {
         const hasLink = !!currentArticle?.link;
         if (!hasLink) return postContent;
-        const attrAuthor = author;
-        const fullQuote = quote || currentArticle.title;
-        const attribution = attrAuthor ? `Says ${attrAuthor}: "${fullQuote}"` : `"${fullQuote}"`;
-        return `${postContent}\n\n${attribution}\n\nvia ${currentArticle.link}`;
+
+        // Default to fixed 23-char cost (social standard).
+        // Only override if a service is explicitly known NOT to shorten.
+        const USE_FULL_URL_SERVICES = new Set([]);
+        const linkPart = (service && USE_FULL_URL_SERVICES.has(service))
+            ? currentArticle.link
+            : 'x'.repeat(SHORTENED_URL_LEN);
+        return `${postContent}\n\n${linkPart}`;
     };
 
-    const rawChannels = loadSettings().bufferChannels || [];
-    const bufferChannelObjects = rawChannels.map(ch => typeof ch === 'string' ? { id: ch } : ch);
+    const bufferChannelObjects = bufferChannels.map(ch => typeof ch === 'string' ? { id: ch } : ch);
     const bufferChannelIds = bufferChannelObjects.map(ch => ch.id);
-    const estimatedFullText = computeFullText();
     const charWarnings = bufferChannelObjects
         .filter(ch => {
             const limit = CHAR_LIMITS[ch.service];
             if (!limit) return false;
-            const textToCheck = URL_EXCLUDED_SERVICES.has(ch.service) && currentArticle?.link
-                ? estimatedFullText.replace(currentArticle.link, '')
-                : estimatedFullText;
-            return textToCheck.length > limit;
+            return computeFullText(ch.service).length > limit;
         })
         .map(ch => ({ service: ch.service, limit: CHAR_LIMITS[ch.service] }))
         .filter((w, i, arr) => arr.findIndex(x => x.service === w.service) === i);
 
     const isAnyLoading = isCapturing || isGeneratingAi || isUploadingCustom;
-    const hasCharLimitViolation = charWarnings.length > 0;
 
     // Maximum postContent length permitted by the strictest channel.
     // Chars beyond this index should be highlighted as over-limit.
+    // Always applies: uses strictest known limit as a floor even when no channels have a known service
+    // (or no channels are configured), so the user gets feedback regardless of Buffer setup state.
     const maxAllowedPostLen = (() => {
         let min = Infinity;
         for (const ch of bufferChannelObjects) {
             const limit = CHAR_LIMITS[ch.service];
             if (!limit) continue;
-            const counted = URL_EXCLUDED_SERVICES.has(ch.service) && currentArticle?.link
-                ? estimatedFullText.replace(currentArticle.link, '')
-                : estimatedFullText;
-            const offset = counted.length - postContent.length;
+            const fullTextLen = computeFullText(ch.service).length;
+            const offset = fullTextLen - postContent.length;
             const allowed = Math.max(0, limit - offset);
             if (allowed < min) min = allowed;
         }
-        return Number.isFinite(min) ? min : null;
+        if (!Number.isFinite(min)) {
+            // No known-service channels: applying strictest known limit conservatively
+            const strictest = Math.min(...Object.values(CHAR_LIMITS));
+            // Default to non-Bluesky (full URL) offset for safety
+            const offset = computeFullText().length - postContent.length;
+            return Math.max(0, strictest - offset);
+        }
+        return min;
     })();
     const hasOverage = maxAllowedPostLen !== null && postContent.length > maxAllowedPostLen;
+    const hasCharLimitViolation = charWarnings.length > 0 || hasOverage;
 
     const insertEmoji = (emoji) => {
-        const ta = postTextareaRef.current;
-        if (ta && document.activeElement === ta) {
-            const start = ta.selectionStart ?? postContent.length;
-            const end = ta.selectionEnd ?? postContent.length;
-            const next = postContent.slice(0, start) + emoji + postContent.slice(end);
+        const editor = postTextareaRef.current;
+        const el = editor?.element?.();
+        if (editor && el && document.activeElement === el) {
+            const offset = editor.getCursorOffset();
+            const next = postContent.slice(0, offset) + emoji + postContent.slice(offset);
             setPostContent(next);
-            // Restore cursor after the inserted emoji on the next tick
             requestAnimationFrame(() => {
-                ta.focus();
-                const pos = start + emoji.length;
-                ta.setSelectionRange(pos, pos);
+                editor.focus();
+                editor.setCursorOffset(offset + emoji.length);
             });
         } else {
             setPostContent(prev => prev + emoji);
@@ -452,16 +597,10 @@ const PostPage = ({ selectedTag }) => {
         setIsPublishing(true);
         try {
             const { imageData, coverUrl } = getSelectedImage();
-            const hasImage = !!(imageData || coverUrl);
-            let fullText;
-            if (hasImage) {
-                fullText = `${postContent}\n\n${currentArticle.link}`;
-            } else {
-                const attrAuthor = author;
-                const fullQuote = quote || currentArticle.title;
-                const attribution = attrAuthor ? `Says ${attrAuthor}: "${fullQuote}"` : `"${fullQuote}"`;
-                fullText = `${postContent}\n\n${attribution}\n\nvia ${currentArticle.link}`;
-            }
+
+            // All posts strictly use [Post Text]\n\n[URL]. 
+            // Attribution/Quote is only visual in the screenshot image.
+            const fullText = currentArticle.link ? `${postContent}\n\n${currentArticle.link}` : postContent;
 
             const result = await publishPost(fullText, currentArticle.link, { imageData, coverUrl }, 'buffer', bufferChannelIds, bufferMode);
 
@@ -559,6 +698,85 @@ const PostPage = ({ selectedTag }) => {
                     </a>
                 </div>
 
+                {/* Post content + emoji buttons + publish buttons — the primary workflow */}
+                <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-5 border border-amber-200 dark:border-amber-800/50 mb-6">
+                    <label id="post-editor-label" htmlFor="post-editor" className="block text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase mb-2">
+                        Post
+                    </label>
+                    <div className="flex gap-3 items-start">
+                        <HighlightedPostEditor
+                            ref={postTextareaRef}
+                            id="post-editor"
+                            value={postContent}
+                            onChange={handlePostChange}
+                            maxAllowedLen={maxAllowedPostLen}
+                            placeholder="Write your post..."
+                            className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md p-3 min-h-[100px] text-gray-800 dark:text-gray-200 leading-relaxed font-sans outline-none"
+                        />
+                        <div className="flex flex-col gap-2">
+                            {['🔥', '🤯', '🤡'].map(emoji => (
+                                <button
+                                    key={emoji}
+                                    type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => insertEmoji(emoji)}
+                                    className="text-base px-1.5 py-0.5 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                                    aria-label={emoji}
+                                >
+                                    {emoji}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="mt-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+                        {postContent.length} characters
+                    </div>
+                    {charWarnings.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                            {charWarnings.map(w => (
+                                <p key={w.service} className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                                    Exceeds {w.service.charAt(0).toUpperCase() + w.service.slice(1)}'s {w.limit}-character limit
+                                </p>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Publish buttons — inside the amber Post box to visually unify the workflow */}
+                    <div className="mt-4 pt-4 border-t border-amber-200 dark:border-amber-800/50 flex flex-col sm:flex-row items-start sm:items-center justify-end gap-3">
+                        <span className="text-sm font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">Save to Buffer:</span>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                onClick={() => handlePublish('now')}
+                                disabled={isPublishing || isAnyLoading || hasCharLimitViolation || !postContent.trim()}
+                                className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-transparent text-sm font-medium text-white shadow-sm bg-red-600 hover:bg-red-700 disabled:opacity-70 disabled:cursor-not-allowed"
+                            >
+                                Now
+                            </button>
+                            <button
+                                onClick={() => handlePublish('prioritize')}
+                                disabled={isPublishing || isAnyLoading || hasCharLimitViolation || !postContent.trim()}
+                                className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-transparent text-sm font-medium text-white shadow-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-70 disabled:cursor-not-allowed"
+                            >
+                                Prioritize
+                            </button>
+                            <button
+                                onClick={() => handlePublish('next')}
+                                disabled={isPublishing || isAnyLoading || hasCharLimitViolation || !postContent.trim()}
+                                className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-70 disabled:cursor-not-allowed"
+                            >
+                                Next Available
+                            </button>
+                            <button
+                                onClick={() => handlePublish('draft')}
+                                disabled={isPublishing || isAnyLoading || hasCharLimitViolation || !postContent.trim()}
+                                className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-70 disabled:cursor-not-allowed"
+                            >
+                                Drafts
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 {/* Quote + metadata */}
                 <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-5 border border-gray-200 dark:border-gray-700 mb-6">
                     <label htmlFor="quote-editor" className="block text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase mb-2">
@@ -598,102 +816,6 @@ const PostPage = ({ selectedTag }) => {
                                 </button>
                             </div>
                         </div>
-                    </div>
-                </div>
-
-                {/* Post content + emoji buttons */}
-                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-5 border border-gray-200 dark:border-gray-700 mb-6">
-                    <label htmlFor="post-editor" className="block text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase mb-2">
-                        Post
-                    </label>
-                    <div className="flex gap-3 items-start">
-                        <div className="flex-1 relative">
-                            {hasOverage && (
-                                <div
-                                    data-testid="post-overage-overlay"
-                                    aria-hidden="true"
-                                    className="absolute inset-0 p-3 pointer-events-none whitespace-pre-wrap break-words leading-relaxed font-sans text-transparent select-none overflow-hidden"
-                                >
-                                    <span>{postContent.slice(0, maxAllowedPostLen)}</span>
-                                    <span
-                                        data-testid="post-overage-highlight"
-                                        className="bg-red-200 dark:bg-red-900/50 rounded-sm"
-                                    >
-                                        {postContent.slice(maxAllowedPostLen)}
-                                    </span>
-                                </div>
-                            )}
-                            <textarea
-                                id="post-editor"
-                                ref={postTextareaRef}
-                                value={postContent}
-                                onChange={(e) => handlePostChange(e.target.value)}
-                                className="relative w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md p-3 resize-y min-h-[100px] text-gray-800 dark:text-gray-200 leading-relaxed font-sans placeholder-gray-400 dark:placeholder-gray-500"
-                                style={hasOverage ? { backgroundColor: 'transparent' } : undefined}
-                                placeholder="Write your post..."
-                            />
-                        </div>
-                        <div className="flex flex-col gap-2">
-                            {['🔥', '🤯', '🤡'].map(emoji => (
-                                <button
-                                    key={emoji}
-                                    type="button"
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => insertEmoji(emoji)}
-                                    className="text-base px-1.5 py-0.5 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                                    aria-label={emoji}
-                                >
-                                    {emoji}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                    <div className="mt-2 text-xs font-medium text-gray-500 dark:text-gray-400">
-                        {postContent.length} characters
-                    </div>
-                    {charWarnings.length > 0 && (
-                        <div className="mt-2 space-y-1">
-                            {charWarnings.map(w => (
-                                <p key={w.service} className="text-xs font-medium text-amber-600 dark:text-amber-400">
-                                    Exceeds {w.service.charAt(0).toUpperCase() + w.service.slice(1)}'s {w.limit}-character limit
-                                </p>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                {/* Publish buttons */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-end gap-3 mb-6">
-                    <span className="text-sm font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">Save to Buffer:</span>
-                    <div className="flex flex-wrap items-center gap-2">
-                        <button
-                            onClick={() => handlePublish('now')}
-                            disabled={isPublishing || isAnyLoading || hasCharLimitViolation || !postContent.trim()}
-                            className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-transparent text-sm font-medium text-white shadow-sm bg-red-600 hover:bg-red-700 disabled:opacity-70 disabled:cursor-not-allowed"
-                        >
-                            Now
-                        </button>
-                        <button
-                            onClick={() => handlePublish('prioritize')}
-                            disabled={isPublishing || isAnyLoading || hasCharLimitViolation || !postContent.trim()}
-                            className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-transparent text-sm font-medium text-white shadow-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-70 disabled:cursor-not-allowed"
-                        >
-                            Prioritize
-                        </button>
-                        <button
-                            onClick={() => handlePublish('next')}
-                            disabled={isPublishing || isAnyLoading || hasCharLimitViolation || !postContent.trim()}
-                            className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-70 disabled:cursor-not-allowed"
-                        >
-                            Next Available
-                        </button>
-                        <button
-                            onClick={() => handlePublish('draft')}
-                            disabled={isPublishing || isAnyLoading || hasCharLimitViolation || !postContent.trim()}
-                            className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-70 disabled:cursor-not-allowed"
-                        >
-                            Drafts
-                        </button>
                     </div>
                 </div>
 

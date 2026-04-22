@@ -81,6 +81,13 @@ server/                         Node.js/Express backend
 - **Image pipeline:** Images stay as local base64 data URLs until publish time, then upload to R2 and attach to Buffer.
 - **Venice AI images:** Generated on-demand (user clicks the AI card) to conserve API credits.
 
+## Character Limit Rules
+
+- **Total Budget:** Based on platform limits (e.g., 300 for Bluesky, 280 for Twitter/X, 500 for Mastodon/Threads).
+- **Usage:** Only the post body text and the article URL are counted against the limit. Note that a **2-character separator** (`\n\n`) is automatically added between your text and the URL, which is also included in the total count.
+- **URL Budget:** Article URLs are treated as exactly **23 characters** for major services (Bluesky, Twitter/X, Mastodon), regardless of their actual length. This applies both when the service is known and in the app's internal "safe" fallback logic.
+- **No Attribution Text:** Quotes, author names, and "via" branding are **not** appended to the post text and are **not** counted in the limit check. They are strictly visual elements within the generated screenshot image.
+
 ## Key Files
 
 | File | Role |
