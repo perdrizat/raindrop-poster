@@ -108,6 +108,28 @@ describe('raindropioService', () => {
 
             expect(result).toEqual([]);
         });
+
+        it('should strip marketing tracking params from article URLs', async () => {
+            globalThis.fetch.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    success: true,
+                    items: [
+                        { id: 1, link: 'https://example.com/a?utm_source=newsletter&utm_medium=email' },
+                        { id: 2, link: 'https://slowmist.medium.com/analysis-x?source=rss-4ceeedda40e8------2' },
+                        { id: 3, link: 'https://example.com/c?source=newsletter&keep=this' },
+                        { id: 4, link: 'https://example.com/d?share_via=twitter' },
+                    ],
+                }),
+            });
+
+            const result = await fetchTaggedItems('tag');
+
+            expect(result[0].link).toBe('https://example.com/a');
+            expect(result[1].link).toBe('https://slowmist.medium.com/analysis-x');
+            expect(result[2].link).toBe('https://example.com/c?keep=this');
+            expect(result[3].link).toBe('https://example.com/d');
+        });
     });
 
     describe('updateBookmarkTags', () => {

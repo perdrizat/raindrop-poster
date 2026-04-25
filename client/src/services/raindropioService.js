@@ -57,7 +57,7 @@ export const fetchTaggedItems = async (tag) => {
             const cleanUrl = (urlString) => {
                 try {
                     const url = new URL(urlString);
-                    const paramsToStrip = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'share_via'];
+                    const paramsToStrip = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'share_via', 'source'];
                     paramsToStrip.forEach(param => url.searchParams.delete(param));
                     return url.toString();
                 } catch {
