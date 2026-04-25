@@ -289,6 +289,115 @@ describe('SetupPage against REAL backend', () => {
         });
     });
 
+    it('auto-migrates legacy Buffer channel string IDs into enriched objects on load', async () => {
+        // Legacy storage: bare string IDs without service type. PostPage's char-limit
+        // logic falls back to the strictest known limit (280) when service is unknown,
+        // so we want these enriched into { id, service, name } once availableChannels arrive.
+        window.localStorage.setItem('raindrop_publisher_settings', JSON.stringify({
+            providerConnections: { raindropio: false },
+            selectedTag: '',
+            postingObjectives: 'Real objectives',
+            bufferChannels: ['123', '456'],
+        }));
+
+        // Capture the body POSTed to /api/system/configure so we can verify the
+        // migration was persisted server-side too (not just locally).
+        let configureBody = null;
+        const prevFetch = globalThis.fetch;
+        globalThis.fetch = async (url, options = {}) => {
+            if (url === '/api/system/configure' && options?.body) {
+                configureBody = JSON.parse(options.body);
+            }
+            return prevFetch(url, options);
+        };
+
+        try {
+            render(<SetupPage />);
+
+            // Wait for the available channels list to load from the Buffer test endpoint.
+            await waitFor(() => {
+                expect(screen.getByLabelText(/twitter: @mock_x/i)).toBeInTheDocument();
+            }, { timeout: 3000 });
+
+            // Both legacy IDs ('123', '456') resolve to known channels — both must be checked.
+            expect(screen.getByLabelText(/twitter: @mock_x/i)).toBeChecked();
+            expect(screen.getByLabelText(/linkedin: Mock LinkedIn/i)).toBeChecked();
+
+            // Local storage should now contain enriched objects with service type.
+            await waitFor(() => {
+                const saved = JSON.parse(window.localStorage.getItem('raindrop_publisher_settings'));
+                expect(saved.bufferChannels).toEqual(expect.arrayContaining([
+                    expect.objectContaining({ id: '123', service: 'twitter' }),
+                    expect.objectContaining({ id: '456', service: 'linkedin' }),
+                ]));
+                expect(saved.bufferChannels.every(c => typeof c === 'object' && c.service)).toBe(true);
+            }, { timeout: 3000 });
+
+            // Server-side config should also have been updated with the enriched payload.
+            await waitFor(() => {
+                expect(configureBody).not.toBeNull();
+                expect(configureBody.bufferChannels).toEqual(expect.arrayContaining([
+                    expect.objectContaining({ id: '123', service: 'twitter' }),
+                    expect.objectContaining({ id: '456', service: 'linkedin' }),
+                ]));
+            }, { timeout: 3000 });
+
+            // User-visible notice that migration happened.
+            await waitFor(() => {
+                expect(screen.getByText(/migrated 2 buffer channel/i)).toBeInTheDocument();
+            }, { timeout: 3000 });
+        } finally {
+            globalThis.fetch = prevFetch;
+        }
+    });
+
+    it('logs Buffer channel migration details to the console', async () => {
+        window.localStorage.setItem('raindrop_publisher_settings', JSON.stringify({
+            providerConnections: { raindropio: false },
+            selectedTag: '',
+            postingObjectives: 'Real objectives',
+            bufferChannels: ['123', 'stale-id'],
+        }));
+
+        const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+        try {
+            render(<SetupPage />);
+
+            await waitFor(() => {
+                expect(screen.getByLabelText(/twitter: @mock_x/i)).toBeInTheDocument();
+            }, { timeout: 3000 });
+
+            await waitFor(() => {
+                const allCalls = infoSpy.mock.calls.map(c => c.join(' ')).join('\n');
+                expect(allCalls).toMatch(/enriched.*123.*twitter/i);
+                expect(allCalls).toMatch(/dropped.*stale-id/i);
+            }, { timeout: 3000 });
+        } finally {
+            infoSpy.mockRestore();
+        }
+    });
+
+    it('drops Buffer channel entries that no longer exist in the available list', async () => {
+        window.localStorage.setItem('raindrop_publisher_settings', JSON.stringify({
+            providerConnections: { raindropio: false },
+            selectedTag: '',
+            postingObjectives: 'Real objectives',
+            bufferChannels: ['123', 'stale-id-no-longer-in-buffer'],
+        }));
+
+        render(<SetupPage />);
+
+        await waitFor(() => {
+            expect(screen.getByLabelText(/twitter: @mock_x/i)).toBeInTheDocument();
+        }, { timeout: 3000 });
+
+        await waitFor(() => {
+            const saved = JSON.parse(window.localStorage.getItem('raindrop_publisher_settings'));
+            expect(saved.bufferChannels).toHaveLength(1);
+            expect(saved.bufferChannels[0]).toMatchObject({ id: '123', service: 'twitter' });
+        }, { timeout: 3000 });
+    });
+
     it('displays multiple Buffer channels as checkboxes and saves them', async () => {
         render(<SetupPage />);
 

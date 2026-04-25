@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2026-04-25b]
+
+### Fixed
+- SetupPage now auto-migrates legacy Buffer channel entries (bare string IDs or `{id}` objects missing `service`) into enriched `{id, service, name}` shape once Buffer's available channel list is known. Previously these stale entries forced PostPage's char-limit logic to fall back to the strictest known limit (280) instead of using the correct per-platform budget. Stale IDs no longer present in Buffer are also pruned during migration. A toast at the top of the page summarizes what was migrated, and per-channel `[buffer-migrate]` lines are emitted to the console for debugging.
+- Strip `source` query parameter from article URLs (e.g. Medium's `?source=rss-...`) alongside the existing `utm_*` and `share_via` cleanup.
+
 ## [2026-04-25]
 
 ### Fixed

@@ -122,6 +122,57 @@ const SetupPage = () => {
         }
     }, [connections.buffer]);
 
+    // 4. Auto-migrate legacy Buffer channels (bare string IDs or objects without `service`)
+    // into enriched { id, service, name } shape once availableChannels is known. Without
+    // the service field, PostPage's character-limit logic cannot apply the correct per-platform
+    // budget and falls back to the strictest known limit (280 chars). Also drops entries that
+    // no longer exist in Buffer so stale IDs don't keep counting against the limit.
+    useEffect(() => {
+        if (availableChannels.length === 0 || bufferChannels.length === 0) return;
+
+        const byId = new Map(availableChannels.map(c => [c.id, c]));
+        const reconciled = [];
+        const enriched = [];  // { id, service, name } — bare/incomplete entries that gained a service
+        const dropped = [];   // string id — entries no longer in Buffer
+        for (const entry of bufferChannels) {
+            const id = typeof entry === 'string' ? entry : entry?.id;
+            const known = id ? byId.get(id) : null;
+            if (!known) { dropped.push(id || '(empty)'); continue; }
+            if (typeof entry === 'string' || !entry.service) {
+                const next = { id: known.id, service: known.service, name: known.name };
+                reconciled.push(next);
+                enriched.push(next);
+            } else {
+                reconciled.push(entry);
+            }
+        }
+
+        if (enriched.length === 0 && dropped.length === 0) return;
+
+        for (const ch of enriched) {
+            console.info(`[buffer-migrate] enriched ${ch.id} → ${ch.service} (${ch.name})`);
+        }
+        for (const id of dropped) {
+            console.info(`[buffer-migrate] dropped ${id} (not in Buffer's available channels)`);
+        }
+
+        setBufferChannels(reconciled);
+        saveSettings({ ...loadSettings(), bufferChannels: reconciled });
+        configureSystem({ bufferChannels: reconciled }).catch(err => {
+            console.error('Failed to persist migrated Buffer channels:', err);
+        });
+
+        const total = enriched.length + dropped.length;
+        const parts = [];
+        if (enriched.length) parts.push(`${enriched.length} enriched with service type`);
+        if (dropped.length) parts.push(`${dropped.length} dropped (no longer in Buffer)`);
+        setTestMessage({
+            type: 'info',
+            text: `Migrated ${total} Buffer channel${total === 1 ? '' : 's'}: ${parts.join(', ')}.`,
+        });
+        setTimeout(() => setTestMessage(null), 6000);
+    }, [availableChannels, bufferChannels]);
+
     // Handlers
     const handleConnect = (providerId) => {
         // Venice and Buffer shouldn't be connected via UI as they are backend system keys
