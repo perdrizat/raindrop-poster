@@ -420,10 +420,7 @@ const PostPage = ({ selectedTag }) => {
     }, [currentArticle, triggerGeneration, captureScreenshot]);
 
     // Char limit warnings. We count only postContent + URL (no attribution or quote).
-    // Almost all modern social services (BSky, Twitter, Mastodon, Threads) weight URLs 
-    // at a fixed cost regardless of actual length.
-    // const CHAR_LIMITS = { bluesky: 300, mastodon: 500, twitter: 280, threads: 500 };
-    const CHAR_LIMITS = { bluesky: 300, mastodon: 500, twitter: 300, threads: 500 }; // temp 300 for Twitter
+    const CHAR_LIMITS = { bluesky: 300, mastodon: 500, twitter: 280, threads: 500 };
     const SHORTENED_URL_LEN = 23;
 
     const computeFullText = (service = null) => {
@@ -632,11 +629,6 @@ const PostPage = ({ selectedTag }) => {
         }
     };
 
-    const handleNextPost = () => {
-        setPublishResult(null);
-        handleOlder();
-    };
-
     if (isLoading) {
         return (
             <div className="space-y-8 animate-fade-in w-full">
@@ -696,6 +688,9 @@ const PostPage = ({ selectedTag }) => {
                     >
                         {currentArticle.link}
                     </a>
+                    <span className="ml-2 text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">
+                        ({currentArticle.link.length})
+                    </span>
                 </div>
 
                 {/* Post content + emoji buttons + publish buttons — the primary workflow */}
@@ -972,7 +967,6 @@ const PostPage = ({ selectedTag }) => {
                         setPublishResult(null);
                         if (wasSuccess) loadArticles();
                     }}
-                    onNext={publishResult.type === 'success' ? handleNextPost : undefined}
                 />
             )}
         </div>

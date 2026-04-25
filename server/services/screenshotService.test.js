@@ -267,4 +267,23 @@ describe('formatAttribution', () => {
         expect(result).toContain('Jane');
         expect(result).toContain('wired.com');
     });
+
+    it('should not render the literal string "null" when LLM returns it as author', () => {
+        const result = formatAttribution({
+            author: 'null',
+            date: '2026-02-27',
+            domain: 'wired.com',
+        });
+        expect(result).not.toMatch(/\bnull\b/i);
+        expect(result).toContain('wired.com');
+    });
+
+    it('should not render "undefined" as author or domain', () => {
+        const result = formatAttribution({
+            author: 'undefined',
+            date: null,
+            domain: 'undefined',
+        });
+        expect(result).not.toMatch(/\bundefined\b/i);
+    });
 });

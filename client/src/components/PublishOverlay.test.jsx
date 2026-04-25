@@ -60,16 +60,9 @@ describe('PublishOverlay', () => {
         expect(onDismiss).toHaveBeenCalledOnce();
     });
 
-    it('renders Next Post button only when onNext is provided, and calls it', async () => {
-        const onNext = vi.fn();
-        const { rerender } = render(
-            <PublishOverlay type="success" message="Post Published!" onDismiss={() => { }} />
-        );
+    it('never renders a Next Post button', () => {
+        render(<PublishOverlay type="success" message="Post Published!" onDismiss={() => { }} />);
         expect(screen.queryByRole('button', { name: /next post/i })).not.toBeInTheDocument();
-
-        rerender(<PublishOverlay type="success" message="Post Published!" onDismiss={() => { }} onNext={onNext} />);
-        await userEvent.click(screen.getByRole('button', { name: /next post/i }));
-        expect(onNext).toHaveBeenCalledOnce();
     });
 
     it('positions overlay fixed in top-right corner', () => {

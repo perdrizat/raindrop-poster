@@ -154,7 +154,10 @@ ${articleText.substring(0, 100).replace(/\\n/g, ' ')}... [TRUNCATED ${articleTex
         if (metadata?.isHighlightSelection) {
             res.json({ highlight: parsed.highlight });
         } else {
-            res.json({ proposals: parsed.proposals, author: parsed.author });
+            const author = (typeof parsed.author === 'string' && !/^(null|undefined)$/i.test(parsed.author.trim()))
+                ? parsed.author.trim()
+                : null;
+            res.json({ proposals: parsed.proposals, author });
         }
     } catch (error) {
         console.error('Venice API Generate Error:', error.response?.data || error.message);

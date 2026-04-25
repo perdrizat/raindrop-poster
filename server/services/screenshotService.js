@@ -491,10 +491,23 @@ async function hideArchiveToolbars(page) {
 }
 
 /**
+ * Normalises a field value — treats the literal strings "null"/"undefined" and
+ * empty strings as absent so they never render in the attribution bar.
+ */
+const normaliseField = (v) => {
+    if (typeof v !== 'string') return v;
+    const t = v.trim();
+    return /^(null|undefined)$/i.test(t) ? '' : t;
+};
+
+/**
  * Formats the attribution bar text.
  * e.g. "✍ Jane Smith · Feb 2026 · wired.com"
  */
 function formatAttribution({ author, date, domain }) {
+    author = normaliseField(author);
+    date = normaliseField(date);
+    domain = normaliseField(domain);
     const parts = ['✍'];
 
     if (author) parts.push(author);

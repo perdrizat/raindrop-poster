@@ -1,6 +1,6 @@
 import React from 'react';
 
-const PublishOverlay = ({ type, message, url, partialErrors, tagWarning, onDismiss, onNext }) => {
+const PublishOverlay = ({ type, message, url, partialErrors, tagWarning, onDismiss }) => {
     const isError = type === 'error';
     const baseColors = isError
         ? 'bg-red-100 text-red-800 border-red-500 dark:bg-red-900/30 dark:text-red-300'
@@ -43,21 +43,13 @@ const PublishOverlay = ({ type, message, url, partialErrors, tagWarning, onDismi
                 </div>
             </div>
 
-            <div className="mt-3 flex justify-end gap-2">
+            <div className="mt-3 flex justify-end">
                 <button
                     onClick={onDismiss}
                     className="text-xs font-medium px-3 py-1 rounded-md border border-current hover:bg-white/50 dark:hover:bg-black/20 transition-colors"
                 >
                     Dismiss
                 </button>
-                {onNext && (
-                    <button
-                        onClick={onNext}
-                        className="text-xs font-medium px-3 py-1 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-                    >
-                        Next Post
-                    </button>
-                )}
             </div>
         </div>
     );

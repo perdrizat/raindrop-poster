@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2026-04-25]
+
+### Fixed
+- Twitter character limit restored to 280 (stale temp-debug value of 300 had been left in, causing the warning to fire 20 chars too late)
+- The literal string `"null"` from Venice AI (returned when no author is found) no longer appears in the screenshot attribution bar; sanitized in `formatAttribution` and the Venice proposals route
+
+### Changed
+- Success toast no longer shows a "Next Post" button; dismissing already re-fetches the queue and advances automatically
+- Article URL now shows its character length in parentheses (e.g. `https://example.com/path (45)`) to help gauge the URL budget at a glance
+
 ## [2026-04-22]
 
 ### Fixed

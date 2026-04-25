@@ -88,6 +88,14 @@ describe('PostPage — scaffold + navigation', () => {
         expect(link).toHaveAttribute('target', '_blank');
     });
 
+    it('shows URL character count in parentheses next to the article link', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        render(<PostPage selectedTag="important" />);
+        await waitFor(() => expect(screen.getByText('Article One')).toBeInTheDocument());
+        // 'https://example.com/1' is 22 chars
+        expect(screen.getByText(`(${mockArticles[0].link.length})`)).toBeInTheDocument();
+    });
+
     it('shows queue position and total count', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
         render(<PostPage selectedTag="important" />);
@@ -1108,13 +1116,16 @@ describe('PostPage — publishing + overlay', () => {
         await waitFor(() => expect(screen.getByText(/could not update tags/i)).toBeInTheDocument());
     });
 
-    it('Next Post button advances to next bookmark and dismisses overlay', async () => {
+    it('dismissing the success overlay re-fetches articles and advances the queue', async () => {
         saveSettings({
             ...loadSettings(),
             selectedTag: 'important',
             bufferChannels: [{ id: 'c1', service: 'linkedin' }],
         });
-        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        // First load returns all three articles; after dismiss, re-fetch returns only two (first was posted)
+        fetchTaggedItems
+            .mockResolvedValueOnce(mockArticles)
+            .mockResolvedValueOnce([mockArticles[1], mockArticles[2]]);
 
         render(<PostPage selectedTag="important" />);
         await waitFor(() => expect(screen.getByText('Article One')).toBeInTheDocument());
@@ -1123,12 +1134,12 @@ describe('PostPage — publishing + overlay', () => {
 
         await userEvent.click(screen.getByRole('button', { name: /drafts/i }));
 
-        const nextBtn = await screen.findByRole('button', { name: /next post/i });
-        await userEvent.click(nextBtn);
+        const dismissBtn = await screen.findByRole('button', { name: /dismiss/i });
+        await userEvent.click(dismissBtn);
 
         // Overlay dismissed
         expect(screen.queryByRole('status')).not.toBeInTheDocument();
-        // Advanced to article two
+        // Queue re-fetched — now shows article two as the first item
         await waitFor(() => expect(screen.getByText('Article Two')).toBeInTheDocument());
     });
 
