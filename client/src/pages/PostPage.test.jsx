@@ -964,6 +964,63 @@ describe('PostPage — publishing + overlay', () => {
         return textarea;
     };
 
+    it('keeps publish buttons enabled when screenshot is still loading but a different image option is selected', async () => {
+        // Screenshot fetch never resolves — simulates a stuck Puppeteer / dismissPopups timeout.
+        let resolveScreenshot;
+        const screenshotPromise = new Promise(resolve => { resolveScreenshot = resolve; });
+        globalThis.fetch = vi.fn().mockImplementation((url) => {
+            if (url === '/api/screenshot') return screenshotPromise;
+            return Promise.resolve({ ok: true, json: async () => ({ imageData: null }) });
+        });
+
+        const articlesWithCover = [{ ...mockArticles[0], cover: 'https://img.com/cover.jpg' }];
+        fetchTaggedItems.mockResolvedValueOnce(articlesWithCover);
+        saveSettings({
+            ...loadSettings(),
+            bufferChannels: [{ id: 'c1', service: 'linkedin' }],
+        });
+
+        render(<PostPage selectedTag="important" />);
+        const textarea = await screen.findByLabelText(/^post$/i);
+        await userEvent.type(textarea, 'Hello');
+
+        // While screenshot is in flight, switch the selected image to Cover.
+        const coverCard = await screen.findByTestId('image-option-cover');
+        await userEvent.click(coverCard);
+
+        // Drafts must be enabled even though isCapturing is still true.
+        const draftsBtn = screen.getByRole('button', { name: /drafts/i });
+        expect(draftsBtn).toBeEnabled();
+
+        // Don't leave the promise dangling — resolve so React can clean up.
+        resolveScreenshot({ ok: true, json: async () => ({ imageData: null }) });
+    });
+
+    it('keeps publish buttons disabled when screenshot is still loading and screenshot is the selected image', async () => {
+        let resolveScreenshot;
+        const screenshotPromise = new Promise(resolve => { resolveScreenshot = resolve; });
+        globalThis.fetch = vi.fn().mockImplementation((url) => {
+            if (url === '/api/screenshot') return screenshotPromise;
+            return Promise.resolve({ ok: true, json: async () => ({ imageData: null }) });
+        });
+
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        saveSettings({
+            ...loadSettings(),
+            bufferChannels: [{ id: 'c1', service: 'linkedin' }],
+        });
+
+        render(<PostPage selectedTag="important" />);
+        const textarea = await screen.findByLabelText(/^post$/i);
+        await userEvent.type(textarea, 'Hello');
+
+        // Default selectedImageOption is 'screenshot' — which is still loading.
+        const draftsBtn = screen.getByRole('button', { name: /drafts/i });
+        expect(draftsBtn).toBeDisabled();
+
+        resolveScreenshot({ ok: true, json: async () => ({ imageData: null }) });
+    });
+
     it('renders four publish buttons (Now, Prioritize, Next Available, Drafts)', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
         render(<PostPage selectedTag="important" />);

@@ -451,9 +451,22 @@ async function dismissPopups(page) {
                 });
             }
 
-            // Also hide fixed/sticky elements with very high z-index that cover ≥10% of the viewport
+            // Also hide fixed/sticky elements with very high z-index that cover ≥10% of the viewport.
+            // Pre-filter via a targeted selector instead of walking every element on the page —
+            // calling getComputedStyle() inside a `*` loop on heavy pages (Medium, paywalls,
+            // ad-laden SPAs) can take >180s and trips Puppeteer's protocolTimeout. Real overlays
+            // either declare position via inline style or use one of these semantic patterns.
             const viewArea = window.innerWidth * window.innerHeight;
-            for (const el of document.querySelectorAll('*')) {
+            const overlayCandidates = document.querySelectorAll(
+                '[style*="position:fixed"], [style*="position: fixed"],' +
+                '[style*="position:sticky"], [style*="position: sticky"],' +
+                'header, aside, dialog, [role="dialog"], [role="alertdialog"],' +
+                '[class*="banner"], [class*="modal"], [class*="popup"], [class*="overlay"]'
+            );
+            const MAX_CANDIDATES = 800;
+            let i = 0;
+            for (const el of overlayCandidates) {
+                if (++i > MAX_CANDIDATES) break;
                 const style = window.getComputedStyle(el);
                 const zIndex = parseInt(style.zIndex) || 0;
                 if (zIndex > 999 && (style.position === 'fixed' || style.position === 'sticky')) {

@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2026-05-05]
+
+### Fixed
+- `dismissPopups` Pass 3 no longer walks every DOM element on the page. The `document.querySelectorAll('*')` + per-element `getComputedStyle()` loop could exceed Puppeteer's 180s `protocolTimeout` on heavy pages, surfacing as `Runtime.callFunctionOn timed out`. Now pre-filters via a targeted selector (inline `position:fixed/sticky`, `header`/`aside`/`dialog`, common banner/modal/popup/overlay class hints) and caps the loop at 800 candidates.
+- Publish buttons no longer block on a still-loading screenshot when the user has selected a different image option (Cover / AI / Custom). Previously, a stuck screenshot capture could lock the user out of publishing entirely; now only the image option that's actually being awaited blocks publish.
+
+### Changed
+- CONTRIBUTING.md now requires running `./scripts/screenshot-test.sh` after editing `screenshotService.js`, `highlighter.js`, or `scraperService.js`, since unit tests don't exercise real Puppeteer/network behaviour.
+
 ## [2026-04-25b]
 
 ### Fixed

@@ -18,11 +18,15 @@ Vite proxies `/api` requests to the Express backend automatically.
 cd client && npx vitest run                        # Client unit tests (jsdom)
 cd server && npm test                               # Server unit tests
 cd server && npm run test:e2e                       # E2E tests (Puppeteer + real APIs)
-./scripts/screenshot-test.sh                        # Visual regression (downloads to /tmp/raindrop-screenshots/)
+./scripts/screenshot-test.sh                        # Visual regression (saves to server/scripts/screenshots/)
 ```
 
 - Client: Vitest + @testing-library/react, globals enabled, jsdom environment, setup in `src/setupTests.js`
 - Server: Vitest + supertest, separate configs for unit (`vitest.config.js`) and E2E (`vitest.e2e.config.js`)
+
+### Required after screenshot pipeline changes
+
+**Always run `./scripts/screenshot-test.sh` after editing `server/services/screenshotService.js` (or `highlighter.js`, `scraperService.js`).** Unit tests don't exercise real Puppeteer/network behaviour, so changes to popup dismissal, clip computation, viewport sizing, archive fallbacks, or quote highlighting must be validated against the curated set of problem URLs in `server/scripts/screenshot-test.mjs`. The 7 captures (~3 minutes) confirm: quote correctly highlighted, no overlays bleeding through, full page width visible, no truncation. Open each PNG and verify, or hand the file paths to Claude Code for vision-based inspection.
 
 ## Deploy
 
