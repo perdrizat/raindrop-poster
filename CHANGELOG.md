@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2026-05-16]
+
+### Changed
+- Migrated Buffer `createPost` `assets` field from the deprecated `{ images: [...] }` object to the new ordered array `[{ image: {...} }]` shape ahead of Buffer's 2026-05-25 cutoff.
+
 ## [2026-05-05]
 
 ### Fixed

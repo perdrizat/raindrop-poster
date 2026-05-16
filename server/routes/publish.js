@@ -128,9 +128,7 @@ router.post('/', async (req, res) => {
                 }
 
                 if (imageUrl) {
-                    input.assets = {
-                        images: [{ url: imageUrl }]
-                    };
+                    input.assets = [{ image: { url: imageUrl } }];
                 }
 
                 console.log(`Buffer API → createPost channel=${channelId} mode=${input.mode} scheduling=${input.schedulingType}${input.saveToDraft ? ' draft=true' : ''}${imageUrl ? ' +image' : ''}`);

@@ -113,9 +113,9 @@ describe('POST /api/publish', () => {
 
         // Buffer post should use the R2 URL (calls[0] is GetChannels, calls[1] is createPost)
         const bufferCall = axios.post.mock.calls[1][1];
-        expect(bufferCall.variables.input.assets).toEqual({
-            images: [{ url: 'https://r2.dev/screenshots/test.png' }]
-        });
+        expect(bufferCall.variables.input.assets).toEqual([
+            { image: { url: 'https://r2.dev/screenshots/test.png' } }
+        ]);
     });
 
     it('should track post image in DB after successful Buffer post', async () => {
@@ -171,9 +171,9 @@ describe('POST /api/publish', () => {
         expect(uploadImage).not.toHaveBeenCalled();
         // Buffer post should use the cover URL directly (calls[0] is GetChannels, calls[1] is createPost)
         const bufferCall = axios.post.mock.calls[1][1];
-        expect(bufferCall.variables.input.assets).toEqual({
-            images: [{ url: 'https://example.com/cover.jpg' }]
-        });
+        expect(bufferCall.variables.input.assets).toEqual([
+            { image: { url: 'https://example.com/cover.jpg' } }
+        ]);
         // Should NOT track (no R2 key to clean up)
         expect(trackPostImage).not.toHaveBeenCalled();
     });
