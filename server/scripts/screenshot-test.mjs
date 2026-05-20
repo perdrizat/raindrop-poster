@@ -88,6 +88,12 @@ const TEST_CASES = [
         quote: 'The new Siri still hasn’t launched, and when it does, it will be with Google’s technology at the core',
         attribution: { author: 'Ben Thompson', date: 'Apr 2026', domain: 'stratechery.com' },
     },
+    {
+        name: 'Vitalik eth.limo — formal verification AI quote',
+        url: 'https://vitalik.eth.limo/general/2026/05/18/fv.html',
+        quote: 'Formal verification, aided by AI, should be viewed not as totally new paradigm, but as a powerful accelerant of a trend and a paradigm that was already marching forward',
+        attribution: { author: 'Vitalik Buterin', date: '2026-05-18', domain: 'vitalik.eth.limo' },
+    },
 ];
 
 // ---------------------------------------------------------------------------

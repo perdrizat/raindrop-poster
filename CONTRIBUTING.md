@@ -26,7 +26,9 @@ cd server && npm run test:e2e                       # E2E tests (Puppeteer + rea
 
 ### Required after screenshot pipeline changes
 
-**Always run `./scripts/screenshot-test.sh` after editing `server/services/screenshotService.js` (or `highlighter.js`, `scraperService.js`).** Unit tests don't exercise real Puppeteer/network behaviour, so changes to popup dismissal, clip computation, viewport sizing, archive fallbacks, or quote highlighting must be validated against the curated set of problem URLs in `server/scripts/screenshot-test.mjs`. The 7 captures (~3 minutes) confirm: quote correctly highlighted, no overlays bleeding through, full page width visible, no truncation. Open each PNG and verify, or hand the file paths to Claude Code for vision-based inspection.
+**Always run `./scripts/screenshot-test.sh` after editing `server/services/screenshotService.js` (or `highlighter.js`, `scraperService.js`).** Unit tests don't exercise real Puppeteer/network behaviour, so changes to popup dismissal, clip computation, viewport sizing, archive fallbacks, or quote highlighting must be validated against the curated set of problem URLs in `server/scripts/screenshot-test.mjs`. The 7+ captures (~3 minutes) confirm: quote correctly highlighted, no overlays bleeding through, full page width visible, no truncation. Open each PNG and verify, or hand the file paths to Claude Code for vision-based inspection.
+
+**Never delete `server/scripts/screenshots/` or any files inside it.** The user inspects captures manually across runs to compare regressions. Files are timestamped (`YYYYMMDD-HHMM_<name>.png`) so they accumulate without overwriting. The directory is gitignored; let it grow.
 
 ## Deploy
 
