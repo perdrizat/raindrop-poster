@@ -94,6 +94,12 @@ const TEST_CASES = [
         quote: 'Formal verification, aided by AI, should be viewed not as totally new paradigm, but as a powerful accelerant of a trend and a paradigm that was already marching forward',
         attribution: { author: 'Vitalik Buterin', date: '2026-05-18', domain: 'vitalik.eth.limo' },
     },
+    {
+        name: 'Casa blog — social engineering active-call defense',
+        url: 'https://blog.casa.io/evolving-casas-defenses-against-social-engineering/',
+        quote: "20% of social engineering attacks start with an unexpected call. To protect against these attacks, the app now detects when you're on an active phone call and shows a warning before you send funds. The attacker needs you on the phone because urgency and real-time pressure can override careful thinking",
+        attribution: { author: 'Team Casa', date: '2026-05-26', domain: 'blog.casa.io' },
+    },
 ];
 
 // ---------------------------------------------------------------------------
