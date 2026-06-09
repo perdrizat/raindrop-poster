@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2026-06-09]
+
+### Fixed
+- Dates travel as ISO end-to-end (native `<input type="date">`); fixes "Sep 2026" misparse of day-first locale dates like `9.6.2026`
+- Server parses ISO dates as calendar dates (timezone-immune), keeps dotted day-first dates as legacy fallback
+- Unparseable dates are skipped in the attribution bar instead of rendering "Invalid Date NaN"
+
 ## [2026-05-16]
 
 ### Changed

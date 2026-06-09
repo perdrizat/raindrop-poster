@@ -235,6 +235,28 @@ describe('PostPage — quote section', () => {
         expect(authorInput.value).toBe('Jane Doe');
     });
 
+    it('date field is a native date input pre-filled with the ISO date from article.created', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        render(<PostPage selectedTag="important" />);
+        const dateInput = await screen.findByLabelText(/date/i);
+        // Native date input: value is always ISO YYYY-MM-DD regardless of browser locale
+        expect(dateInput).toHaveAttribute('type', 'date');
+        await waitFor(() => expect(dateInput.value).toBe('2026-01-01'));
+    });
+
+    it('initial screenshot request sends the date in ISO format, not a locale string', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        render(<PostPage selectedTag="important" />);
+        await screen.findByLabelText(/quote/i);
+
+        await waitFor(() => {
+            expect(globalThis.fetch).toHaveBeenCalledWith('/api/screenshot', expect.any(Object));
+        });
+        const calls = globalThis.fetch.mock.calls.filter(c => c[0] === '/api/screenshot');
+        const body = JSON.parse(calls[0][1].body);
+        expect(body.date).toBe('2026-01-01');
+    });
+
     it('refresh screenshot button fires /api/screenshot with current author/date/domain', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
         render(<PostPage selectedTag="important" />);

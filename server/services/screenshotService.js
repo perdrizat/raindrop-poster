@@ -514,6 +514,29 @@ const normaliseField = (v) => {
 };
 
 /**
+ * Parses a date string into a Date. The client transmits ISO (YYYY-MM-DD), which
+ * must be treated as a plain calendar date — `new Date('2026-06-01')` is UTC
+ * midnight and would render as "May" in UTC-negative timezones. Dotted numeric
+ * dates (9.6.2026) are parsed day-first as a legacy fallback: they come from
+ * `toLocaleDateString()` under European locales, where dots always mean
+ * day-first, and `new Date()` would misread them month-first.
+ * Returns null when the string cannot be parsed into a valid date.
+ */
+function parseAttributionDate(date) {
+    const trimmed = date.trim();
+    const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+    if (iso) {
+        const d = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+        return isNaN(d.getTime()) ? null : d;
+    }
+    const dotted = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(trimmed);
+    const d = dotted
+        ? new Date(Number(dotted[3]), Number(dotted[2]) - 1, Number(dotted[1]))
+        : new Date(trimmed);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+/**
  * Formats the attribution bar text.
  * e.g. "✍ Jane Smith · Feb 2026 · wired.com"
  */
@@ -526,14 +549,12 @@ function formatAttribution({ author, date, domain }) {
     if (author) parts.push(author);
 
     if (date) {
-        try {
-            const d = new Date(date);
+        const d = parseAttributionDate(date);
+        if (d) {
             const month = d.toLocaleString('en', { month: 'short' });
-            const year = d.getFullYear();
-            parts.push(`${month} ${year}`);
-        } catch {
-            // skip date
+            parts.push(`${month} ${d.getFullYear()}`);
         }
+        // unparseable → skip date rather than render "Invalid Date NaN"
     }
 
     if (domain) parts.push(domain);

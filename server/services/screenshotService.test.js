@@ -286,4 +286,63 @@ describe('formatAttribution', () => {
         });
         expect(result).not.toMatch(/\bundefined\b/i);
     });
+
+    it('should parse dotted dates day-first (German locale: 9.6.2026 = June, not September)', () => {
+        const result = formatAttribution({
+            author: 'Jane',
+            date: '9.6.2026',
+            domain: 'example.com',
+        });
+        expect(result).toContain('Jun 2026');
+        expect(result).not.toContain('Sep');
+    });
+
+    it('should parse dotted dates with two-digit day and month (24.12.2026 = December)', () => {
+        const result = formatAttribution({
+            author: 'Jane',
+            date: '24.12.2026',
+            domain: 'example.com',
+        });
+        expect(result).toContain('Dec 2026');
+    });
+
+    it('should still parse US slash dates month-first (6/9/2026 = June)', () => {
+        const result = formatAttribution({
+            author: 'Jane',
+            date: '6/9/2026',
+            domain: 'example.com',
+        });
+        expect(result).toContain('Jun 2026');
+    });
+
+    it('should parse ISO dates (YYYY-MM-DD) as calendar dates, immune to timezone shift', () => {
+        // new Date('2026-06-01') is UTC midnight; in a UTC-negative timezone the local
+        // rendering would shift to "May 2026". ISO dates must be treated as plain
+        // calendar dates, not instants.
+        const prevTz = process.env.TZ;
+        process.env.TZ = 'America/New_York';
+        try {
+            const result = formatAttribution({
+                author: 'Jane',
+                date: '2026-06-01',
+                domain: 'example.com',
+            });
+            expect(result).toContain('Jun 2026');
+            expect(result).not.toContain('May');
+        } finally {
+            process.env.TZ = prevTz;
+        }
+    });
+
+    it('should skip the date segment entirely when it cannot be parsed', () => {
+        const result = formatAttribution({
+            author: 'Albert Wenger',
+            date: 'You-Tube',
+            domain: 'continuations.com',
+        });
+        expect(result).not.toMatch(/invalid date/i);
+        expect(result).not.toMatch(/NaN/);
+        expect(result).toContain('Albert Wenger');
+        expect(result).toContain('continuations.com');
+    });
 });

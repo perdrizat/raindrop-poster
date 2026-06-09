@@ -263,6 +263,14 @@ const PostPage = ({ selectedTag }) => {
         catch { return ''; }
     };
 
+    // Dates travel as ISO (YYYY-MM-DD) end-to-end. Locale strings like "9.6.2026"
+    // are ambiguous server-side (day-first vs month-first), so never transmit them.
+    const toIsoDate = (timestamp) => {
+        if (!timestamp) return '';
+        const d = new Date(timestamp);
+        return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+    };
+
     const currentArticle = articles.length > 0 && currentIndex >= 0 && currentIndex < articles.length
         ? articles[currentIndex]
         : null;
@@ -320,7 +328,7 @@ const PostPage = ({ selectedTag }) => {
                 url: article.link,
                 quoteText: article.highlight || null,
                 author: '',
-                date: article.created ? new Date(article.created).toLocaleDateString() : '',
+                date: toIsoDate(article.created),
                 domain: extractDomain(article.link),
                 coverImageUrl: article.cover || null,
                 articleHtml: null,
@@ -374,7 +382,7 @@ const PostPage = ({ selectedTag }) => {
                     url: article.link,
                     quoteText: article.highlight || null,
                     author: results.author,
-                    date: article.created ? new Date(article.created).toLocaleDateString() : '',
+                    date: toIsoDate(article.created),
                     domain: extractDomain(article.link),
                     coverImageUrl: article.cover || null,
                     articleHtml: null,
@@ -402,7 +410,7 @@ const PostPage = ({ selectedTag }) => {
         setPostContent('');
         setQuote(currentArticle.highlight || '');
         setAuthor(currentArticle.author || '');
-        setDate(currentArticle.created ? new Date(currentArticle.created).toLocaleDateString() : '');
+        setDate(toIsoDate(currentArticle.created));
         setDomain(extractDomain(currentArticle.link));
         setScreenshotData(null);
         setCaptureError(null);
@@ -798,7 +806,8 @@ const PostPage = ({ selectedTag }) => {
                         </div>
                         <div>
                             <label htmlFor="date-input" className="block text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase mb-1">Date</label>
-                            <input id="date-input" type="text" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md p-2 text-sm text-gray-800 dark:text-gray-200" placeholder="Publication date" />
+                            {/* Native date input: displays in the user's locale, but .value is always ISO YYYY-MM-DD */}
+                            <input id="date-input" type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md p-2 text-sm text-gray-800 dark:text-gray-200" />
                         </div>
                         <div>
                             <label htmlFor="domain-input" className="block text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase mb-1">Publication</label>
