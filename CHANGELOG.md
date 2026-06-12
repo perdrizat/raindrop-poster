@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-06-13
+
+### Security
+- `pnpm audit` fixes via overrides: tar 6→7 (sqlite3 build chain, 6 high), shell-quote 1.8.4 (critical, dev-only), @tootallnate/once 2.0.1; esbuild Deno-only advisory accepted with re-check date in `pnpm-workspace.yaml`
+- `pnpm audit` is now part of every commit prep (CONTRIBUTING + global instructions)
+
+### Fixed
+- CI and Docker builder bumped to Node 22 (pnpm 11 requires ≥ 22.13); pnpm pinned to 11.5.3 in both Dockerfile stages
+
 ## [1.1.0] - 2026-06-12
 
 ### Security

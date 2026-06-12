@@ -18,3 +18,27 @@ allowBuilds:
   esbuild: true
   puppeteer: true
   sqlite3: true
+
+# Security-advisory overrides (pnpm audit --fix=override, 2026-06-13).
+# esbuild advisory GHSA (binary integrity in Deno) deliberately NOT overridden:
+# it's Deno-only (we run Node) and esbuild 0.28.1's platform sub-packages are
+# younger than minimumReleaseAge. Re-check with `pnpm audit` after 2026-06-18.
+overrides:
+  '@tootallnate/once@<2.0.1': ^2.0.1
+  shell-quote@>=1.1.0 <=1.8.3: ^1.8.4
+  tar@<7.5.7: ^7.5.7
+  tar@<7.5.8: ^7.5.8
+  tar@<=7.5.10: ^7.5.11
+  tar@<=7.5.2: ^7.5.3
+  tar@<=7.5.3: ^7.5.4
+  tar@<=7.5.9: ^7.5.10
+
+minimumReleaseAgeExclude:
+  - tar@7.5.7
+  - tar@7.5.3
+  - tar@7.5.8
+  - tar@7.5.10
+  - tar@7.5.11
+  - tar@7.5.4
+  - '@tootallnate/once@2.0.1'
+  - shell-quote@1.8.4

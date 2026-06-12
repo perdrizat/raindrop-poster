@@ -1,7 +1,8 @@
 # Stage 1: Build the Vite client
-FROM node:20-slim AS builder
+# pnpm 11 requires Node >= 22.13 (node:sqlite builtin)
+FROM node:22-slim AS builder
 
-RUN npm install -g pnpm
+RUN npm install -g pnpm@11.5.3
 
 WORKDIR /app
 
@@ -26,7 +27,7 @@ FROM ghcr.io/puppeteer/puppeteer:latest
 # We need to run as root to bind to port 80
 USER root
 
-RUN npm install -g pnpm
+RUN npm install -g pnpm@11.5.3
 
 # Set environment to production
 ENV NODE_ENV=production

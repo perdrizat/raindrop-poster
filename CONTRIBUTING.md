@@ -32,7 +32,10 @@ pnpm test:e2e                                       # E2E + visual regression (r
 pnpm -C client test                                 # Client unit tests only (jsdom)
 pnpm -C server test                                 # Server unit tests only
 pnpm -C client test:coverage                        # Coverage with enforced thresholds (same for -C server)
+pnpm audit                                          # Dependency advisories — part of every commit prep
 ```
+
+**Dependency audit** — run `pnpm audit` before every commit. Fix via `pnpm audit --fix=override` (writes `overrides` + `minimumReleaseAgeExclude` to `pnpm-workspace.yaml` — security patches may bypass the 7-day age gate), then verify: `pnpm install`, `pnpm -C server rebuild sqlite3` (native chain), `pnpm test`, `pnpm -C client build`. Deliberately accepted advisories are documented in a comment in `pnpm-workspace.yaml` with a re-check date.
 
 **Unit tests** — Client: Vitest + @testing-library/react, jsdom, setup in `src/setupTests.js`. Server: Vitest + supertest, config `vitest.config.js`. All external I/O mocked. Red/green TDD: write the failing test first.
 
