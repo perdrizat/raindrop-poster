@@ -65,6 +65,7 @@ pnpm deploy:remote                                  # Stream both tags to TrueNA
 **Versioning policy:**
 - **At most one version bump per day**, Same-day follow-up fixes ship under the day's existing version: rebuild (`pnpm build`) and redeploy with the **same** tag — skip `pnpm release` - except the user explicitly asks for an additional release. 
 - **Only the root `package.json` carries a version.** It feeds the image tag and the UI badge (`VITE_APP_VERSION`, injected at image build time). The `client/` and `server/` manifests are deliberately versionless (`private: true`) — do not re-add `version` fields there; cosmetic numbers drift.
+- **Git tag tracks the deployed code:** tag the final commit of a version `v<semver>` and move it on same-day follow-ups (`git tag -f v1.1.0 && git push --force origin v1.1.0`), so the tag always marks the commit the shipped image was built from. Note `pnpm version` only auto-tags on a clean tree — verify with `git tag -l` after a release.
 - CHANGELOG headings carry the released version with the date: `## [1.1.0] - 2026-06-12`.
 
 Multi-stage Dockerfile: Stage 1 builds the Vite client, Stage 2 runs Express + Puppeteer on `ghcr.io/puppeteer/puppeteer:latest`. SQLite data persists in a Docker volume (`raindrop-data` mounted at `/app/data`).
