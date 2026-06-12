@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [2026-06-12]
+## [1.1.0] - 2026-06-12
 
 ### Security
 - OAuth callback no longer logs token payloads and returns generic error messages to the browser; provider details go to server logs only (audit H2)
@@ -23,6 +23,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Tests for ThemeToggle, ProviderButton (audit T2) and the 401 → setup redirect (audit T4)
 - Added semantic versioning to frontend (`VITE_APP_VERSION`) replacing the build timestamp
 - Support for streaming Docker image to TrueNAS over SSH with interactive sudo password prompt via `pnpm deploy:remote`
+- Docker image name standardized to `raindrop-poster` across build script, compose, deploy script, and TrueNAS app
+- Versioning policy: max one version per day unless explicitly requested; only the root `package.json` is versioned — client/server manifests are versionless (`private: true`) to prevent drift
+- `deploy:remote` shows live transfer progress (`dd status=progress`) with expected size, a "docker save needs ~10s" hint, and suppresses the misleading remote sudo prompt
 - `audit/2026-06-10-code-review.md` — first staff-engineer code review: 3 high findings (SSRF on scrape/screenshot, OAuth token leakage in auth.js logs/responses, lint failing & unenforced), 6 medium, test-gap analysis; both suites verified green
 - AI image generation now gets scene context: Venice returns an `imageContext` line with the proposals, shown as an editable "Image Context" field above the image cards and injected into the image prompt (falls back to article title)
 

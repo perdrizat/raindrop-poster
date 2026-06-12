@@ -1,7 +1,7 @@
 services:
   raindrop-poster:
     container_name: raindrop-poster
-    image: raindrop:latest
+    image: raindrop-poster:latest
     build: .
     # SECURITY: the app has no authentication — only deploy on a trusted network
     # (LAN/VPN). See "Security Model" in README.md. For host-only access use:

@@ -40,7 +40,7 @@ pnpm -C client test:coverage                        # Coverage with enforced thr
 
 **Coverage thresholds** — enforced in `client/vite.config.js` and `server/vitest.config.js` (floors ~2-3 points under measured). If a change drops below a floor, add tests; lowering a threshold is a deliberate, justified act, not a fix.
 
-**E2E screenshot suite** (`server/services/screenshot-e2e.test.js`) — the *single* screenshot test: 12 curated problem URLs through the real scrape → capture pipeline, asserting a plausible PNG and saving timestamped images to `server/scripts/screenshots/`. Add a `TEST_CASES` entry for every URL that ever fails in production. Not run in CI (needs network + browsers) — run it locally.
+**E2E screenshot suite** (`server/services/screenshot-e2e.test.js`) — the screenshot test: 12 curated problem URLs through the real scrape → capture pipeline, asserting a plausible PNG and saving timestamped images to `server/scripts/screenshots/`. Add a `TEST_CASES` entry for every URL that ever fails in production. Not run in CI (needs network + browsers) — run it locally.
 
 **CI** (`.github/workflows/ci.yml`) — lint + unit tests + dependency audit on every push/PR. E2E excluded by design.
 
@@ -53,8 +53,19 @@ pnpm -C client test:coverage                        # Coverage with enforced thr
 ## Deploy
 
 ```bash
-docker compose build && docker compose up -d        # Build & run on port 80
+docker compose build && docker compose up -d        # Local: build & run on port 80
+
+pnpm release                                        # Bump version (pnpm version patch)
+pnpm build                                          # Build image: raindrop-poster:<version> + :latest
+pnpm deploy:remote                                  # Stream both tags to TrueNAS over SSH
+# …then restart the app in the TrueNAS UI (TrueNAS recreates the container
+# on app restart, so it picks up the new :latest image).
 ```
+
+**Versioning policy:**
+- **At most one version bump per day**, Same-day follow-up fixes ship under the day's existing version: rebuild (`pnpm build`) and redeploy with the **same** tag — skip `pnpm release` - except the user explicitly asks for an additional release. 
+- **Only the root `package.json` carries a version.** It feeds the image tag and the UI badge (`VITE_APP_VERSION`, injected at image build time). The `client/` and `server/` manifests are deliberately versionless (`private: true`) — do not re-add `version` fields there; cosmetic numbers drift.
+- CHANGELOG headings carry the released version with the date: `## [1.1.0] - 2026-06-12`.
 
 Multi-stage Dockerfile: Stage 1 builds the Vite client, Stage 2 runs Express + Puppeteer on `ghcr.io/puppeteer/puppeteer:latest`. SQLite data persists in a Docker volume (`raindrop-data` mounted at `/app/data`).
 
