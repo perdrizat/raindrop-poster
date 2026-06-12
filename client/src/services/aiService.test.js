@@ -95,6 +95,38 @@ describe('aiService', () => {
         await expect(generateProposals(article, 'prompt')).rejects.toThrow('Venice API down');
     });
 
+    it('returns imageContext from the generate response (null when absent)', async () => {
+        globalThis.fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ markdown: 'x', html: '<p>x</p>', text: 'x' })
+        });
+        globalThis.fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ proposals: ['a'], imageContext: 'a vault of gold bars on a balance sheet' })
+        });
+
+        const article = { title: 'T', link: 'http://t.com', highlight: '' };
+        const result = await generateProposals(article, 'prompt');
+        expect(result.imageContext).toBe('a vault of gold bars on a balance sheet');
+    });
+
+    it('passes the charBudget through to the generate endpoint', async () => {
+        globalThis.fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ markdown: 'x', html: '<p>x</p>', text: 'x' })
+        });
+        globalThis.fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ proposals: ['a', 'b', 'c'] })
+        });
+
+        const article = { title: 'T', link: 'http://t.com', highlight: '' };
+        await generateProposals(article, 'prompt', undefined, 275);
+
+        const generateCall = globalThis.fetch.mock.calls.find(c => c[0] === '/api/venice/generate');
+        expect(JSON.parse(generateCall[1].body).charBudget).toBe(275);
+    });
+
     it('forwards the AbortSignal to both scrape and generate fetch calls', async () => {
         globalThis.fetch.mockResolvedValueOnce({
             ok: true,

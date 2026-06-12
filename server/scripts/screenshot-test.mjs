@@ -100,6 +100,12 @@ const TEST_CASES = [
         quote: "20% of social engineering attacks start with an unexpected call. To protect against these attacks, the app now detects when you're on an active phone call and shows a warning before you send funds. The attacker needs you on the phone because urgency and real-time pressure can override careful thinking",
         attribution: { author: 'Team Casa', date: '2026-05-26', domain: 'blog.casa.io' },
     },
+    {
+        name: 'Bitcoin Magazine — Bitcoin-backed mortgage quote',
+        url: 'https://bitcoinmagazine.com/news/bitcoin-buys-a-home-better-and-coinbase',
+        quote: 'The structure involves two separate loans. Borrowers first receive a standard 15- or 30-year Fannie Mae-backed mortgage on the property itself. A second, privately financed loan — secured by pledged Bitcoin or USDC — covers the down payment. Both loans carry the same interest rate and term, consolidating into a single monthly payment',
+        attribution: { author: 'Micah Zimmerman', date: '2026-06-10', domain: 'bitcoinmagazine.com' },
+    },
 ];
 
 // ---------------------------------------------------------------------------

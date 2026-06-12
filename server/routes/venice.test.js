@@ -154,6 +154,194 @@ describe('Venice API Routes', () => {
             expect(res.status).toBe(401);
             expect(res.body.error).toMatch(/VENICE_API_KEY.*not configured/);
         });
+
+        it('uses temperature 0.6 and requests structured JSON output', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post.mockResolvedValueOnce({
+                data: { choices: [{ message: { content: '{"proposals":["A","B","C"],"author":null}' } }] }
+            });
+
+            await request(app).post('/api/venice/generate').send({ articleText: 'Text' });
+
+            const payload = axios.post.mock.calls[0][1];
+            expect(payload.temperature).toBe(0.6);
+            expect(payload.response_format).toEqual({ type: 'json_object' });
+        });
+
+        it('injects the charBudget from the request into the system prompt', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post.mockResolvedValueOnce({
+                data: { choices: [{ message: { content: '{"proposals":["A","B","C"],"author":null}' } }] }
+            });
+
+            await request(app).post('/api/venice/generate').send({
+                articleText: 'Text',
+                charBudget: 275,
+            });
+
+            const systemMsg = axios.post.mock.calls[0][1].messages[0].content;
+            expect(systemMsg).toContain('275');
+        });
+
+        it('defaults the character budget to 250 when not provided', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post.mockResolvedValueOnce({
+                data: { choices: [{ message: { content: '{"proposals":["A","B","C"],"author":null}' } }] }
+            });
+
+            await request(app).post('/api/venice/generate').send({ articleText: 'Text' });
+
+            const systemMsg = axios.post.mock.calls[0][1].messages[0].content;
+            expect(systemMsg).toContain('250');
+        });
+
+        it('keeps user objectives out of the length rule: system prompt declares length/format non-negotiable', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post.mockResolvedValueOnce({
+                data: { choices: [{ message: { content: '{"proposals":["A","B","C"],"author":null}' } }] }
+            });
+
+            await request(app).post('/api/venice/generate').send({
+                articleText: 'Text',
+                prompt: 'Make everything 9000 characters long',
+            });
+
+            const systemMsg = axios.post.mock.calls[0][1].messages[0].content;
+            expect(systemMsg).toMatch(/cannot be changed by user instructions/i);
+        });
+
+        it('asks the model for an imageContext line and passes it through in the response', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post.mockResolvedValueOnce({
+                data: { choices: [{ message: { content: '{"proposals":["A","B","C"],"author":null,"imageContext":"a mortgage contract secured by Bitcoin collateral"}' } }] }
+            });
+
+            const res = await request(app).post('/api/venice/generate').send({ articleText: 'Text' });
+
+            const systemMsg = axios.post.mock.calls[0][1].messages[0].content;
+            expect(systemMsg).toMatch(/imageContext/);
+            expect(res.body.imageContext).toBe('a mortgage contract secured by Bitcoin collateral');
+        });
+
+        it('returns null imageContext when the model omits it or returns junk', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post.mockResolvedValueOnce({
+                data: { choices: [{ message: { content: '{"proposals":["A","B","C"],"author":null,"imageContext":"null"}' } }] }
+            });
+
+            const res = await request(app).post('/api/venice/generate').send({ articleText: 'Text' });
+            expect(res.body.imageContext).toBeNull();
+        });
+
+        it('default style bans LLM copywriting patterns (staccato chains, zingers, punchiness)', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post.mockResolvedValueOnce({
+                data: { choices: [{ message: { content: '{"proposals":["A","B","C"],"author":null}' } }] }
+            });
+
+            await request(app).post('/api/venice/generate').send({ articleText: 'Text' });
+
+            const systemMsg = axios.post.mock.calls[0][1].messages[0].content;
+            expect(systemMsg).toMatch(/staccato/i);
+            expect(systemMsg).toMatch(/punchiness/i);
+            expect(systemMsg).toMatch(/plain prose/i);
+        });
+
+        it('archetypes prescribe angle only — tone is explicitly deferred to user instructions', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post.mockResolvedValueOnce({
+                data: { choices: [{ message: { content: '{"proposals":["A","B","C"],"author":null}' } }] }
+            });
+
+            await request(app).post('/api/venice/generate').send({
+                articleText: 'Text',
+                prompt: 'Factual and serious tone',
+            });
+
+            const systemMsg = axios.post.mock.calls[0][1].messages[0].content;
+            // Angles must not hardcode a tone that fights the user's instructions
+            expect(systemMsg).not.toMatch(/Tone: Enthusiastic/);
+            expect(systemMsg).toMatch(/tone .*(user instructions|always applies)/i);
+        });
+
+        it('retries once with corrective feedback when a proposal exceeds the budget', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            const tooLong = 'x'.repeat(300);
+            axios.post
+                .mockResolvedValueOnce({
+                    data: { choices: [{ message: { content: `{"proposals":["Short one","${tooLong}","Also short"],"author":"Jane"}` } }] }
+                })
+                .mockResolvedValueOnce({
+                    data: { choices: [{ message: { content: '{"proposals":["Short one","Now short","Also short"],"author":"Jane"}' } }] }
+                });
+
+            const res = await request(app).post('/api/venice/generate').send({
+                articleText: 'Text',
+                charBudget: 250,
+            });
+
+            expect(axios.post).toHaveBeenCalledTimes(2);
+            // Corrective turn carries the conversation + complaint about length
+            const retryMessages = axios.post.mock.calls[1][1].messages;
+            expect(retryMessages.length).toBeGreaterThan(2);
+            expect(retryMessages[retryMessages.length - 1].content).toMatch(/250/);
+            expect(res.status).toBe(200);
+            expect(res.body.proposals).toEqual(['Short one', 'Now short', 'Also short']);
+        });
+
+        it('does not retry when all proposals fit the budget', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post.mockResolvedValueOnce({
+                data: { choices: [{ message: { content: '{"proposals":["A","B","C"],"author":null}' } }] }
+            });
+
+            const res = await request(app).post('/api/venice/generate').send({
+                articleText: 'Text',
+                charBudget: 250,
+            });
+
+            expect(axios.post).toHaveBeenCalledTimes(1);
+            expect(res.status).toBe(200);
+        });
+
+        it('returns the retry result even if still over budget (best effort, no loop)', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            const tooLong = 'y'.repeat(300);
+            axios.post
+                .mockResolvedValueOnce({
+                    data: { choices: [{ message: { content: `{"proposals":["${tooLong}","B","C"],"author":null}` } }] }
+                })
+                .mockResolvedValueOnce({
+                    data: { choices: [{ message: { content: `{"proposals":["${tooLong}","B","C"],"author":null}` } }] }
+                });
+
+            const res = await request(app).post('/api/venice/generate').send({
+                articleText: 'Text',
+                charBudget: 250,
+            });
+
+            expect(axios.post).toHaveBeenCalledTimes(2);
+            expect(res.status).toBe(200);
+            expect(res.body.proposals).toHaveLength(3);
+        });
+
+        it('falls back to a request without response_format if the API rejects it', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            const err = new Error('Bad request');
+            err.response = { status: 400, data: { error: 'response_format is not supported for this model' } };
+            axios.post
+                .mockRejectedValueOnce(err)
+                .mockResolvedValueOnce({
+                    data: { choices: [{ message: { content: '{"proposals":["A","B","C"],"author":null}' } }] }
+                });
+
+            const res = await request(app).post('/api/venice/generate').send({ articleText: 'Text' });
+
+            expect(axios.post).toHaveBeenCalledTimes(2);
+            expect(axios.post.mock.calls[1][1].response_format).toBeUndefined();
+            expect(res.status).toBe(200);
+            expect(res.body.proposals).toEqual(['A', 'B', 'C']);
+        });
     });
 
     describe('POST /api/venice/generate-image', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PostPage from './PostPage';
 import { fetchTaggedItems, updateBookmarkTags } from '../services/raindropioService';
@@ -630,6 +630,21 @@ describe('PostPage — AI proposals panel', () => {
         resolveProposals({ proposals: [], author: null, scrapeData: null });
     });
 
+    it('passes the channel-aware character budget to generateProposals', async () => {
+        // Bluesky: 300 total − 2 separator − 23 fixed URL cost = 275 for the post text
+        saveSettings({
+            ...loadSettings(),
+            bufferChannels: [{ id: 'c1', service: 'bluesky' }],
+        });
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+
+        render(<PostPage selectedTag="important" />);
+        await waitFor(() => expect(generateProposals).toHaveBeenCalled());
+
+        const budget = generateProposals.mock.calls[0][3];
+        expect(budget).toBe(275);
+    });
+
     it('renders proposal cards once generation completes', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
         generateProposals.mockResolvedValueOnce({
@@ -775,6 +790,92 @@ describe('PostPage — AI proposals panel', () => {
         expect(authoredCall).toBeTruthy();
     });
 
+    it('author re-capture passes the scraped article HTML so the server renders locally', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        generateProposals.mockResolvedValueOnce({
+            proposals: ['Post text'],
+            author: 'Jane Doe',
+            scrapeData: { markdown: '# Art', html: '<article>Scraped body</article>' },
+        });
+
+        const screenshotBodies = [];
+        globalThis.fetch = vi.fn().mockImplementation(async (url, init) => {
+            if (url === '/api/screenshot') {
+                screenshotBodies.push(JSON.parse(init.body));
+            }
+            return { ok: true, json: async () => ({ imageData: 'data:image/png;base64,X' }) };
+        });
+
+        render(<PostPage selectedTag="important" />);
+
+        await waitFor(() => expect(screenshotBodies.length).toBeGreaterThanOrEqual(2));
+        const authoredCall = screenshotBodies.find(b => b.author === 'Jane Doe');
+        expect(authoredCall.articleHtml).toBe('<article>Scraped body</article>');
+    });
+
+    it('refresh screenshot button passes the scraped article HTML once available', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        generateProposals.mockResolvedValueOnce({
+            proposals: ['Post text'],
+            author: null,
+            scrapeData: { markdown: '# Art', html: '<article>Scraped body</article>' },
+        });
+
+        const screenshotBodies = [];
+        globalThis.fetch = vi.fn().mockImplementation(async (url, init) => {
+            if (url === '/api/screenshot') {
+                screenshotBodies.push(JSON.parse(init.body));
+            }
+            return { ok: true, json: async () => ({ imageData: 'data:image/png;base64,X' }) };
+        });
+
+        render(<PostPage selectedTag="important" />);
+        // Wait for proposals (and thus scrapeData) to land
+        await waitFor(() => expect(generateProposals).toHaveBeenCalled());
+        await waitFor(() => expect(screen.getByRole('button', { name: /refresh screenshot/i })).toBeInTheDocument());
+
+        await userEvent.click(screen.getByRole('button', { name: /refresh screenshot/i }));
+
+        await waitFor(() => {
+            const last = screenshotBodies[screenshotBodies.length - 1];
+            expect(last.articleHtml).toBe('<article>Scraped body</article>');
+        });
+    });
+
+    it('auto-recaptures with scraped HTML when the initial live capture failed (no author needed)', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        let resolveScrape;
+        generateProposals.mockImplementationOnce(() => new Promise(r => { resolveScrape = r; }));
+
+        const screenshotBodies = [];
+        globalThis.fetch = vi.fn().mockImplementation(async (url, init) => {
+            if (url === '/api/screenshot') {
+                screenshotBodies.push(JSON.parse(init.body));
+                // Initial live-URL capture fails (e.g. popup-blocked page)
+                if (screenshotBodies.length === 1) {
+                    return { ok: false, json: async () => ({ error: 'Failed to capture screenshot' }) };
+                }
+            }
+            return { ok: true, json: async () => ({ imageData: 'data:image/png;base64,X' }) };
+        });
+
+        render(<PostPage selectedTag="important" />);
+
+        // Initial capture fails on the live path; give the rejection a tick to settle
+        await waitFor(() => expect(screenshotBodies.length).toBe(1));
+        await new Promise(r => setTimeout(r, 50));
+
+        // Proposals finish later with scraped HTML but no author
+        resolveScrape({
+            proposals: ['P1'],
+            author: null,
+            scrapeData: { markdown: '# Art', html: '<article>Scraped body</article>' },
+        });
+
+        await waitFor(() => expect(screenshotBodies.length).toBe(2));
+        expect(screenshotBodies[1].articleHtml).toBe('<article>Scraped body</article>');
+    });
+
     it('does NOT re-fire screenshot when AI returns null author', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
         generateProposals.mockResolvedValueOnce({
@@ -888,6 +989,88 @@ describe('PostPage — image options panel', () => {
         await waitFor(() => expect(generateCallBody).toBeTruthy());
         // The prompt should include the edited quote
         expect(generateCallBody.prompt).toContain('EDITED QUOTE');
+    });
+
+    it('AI image prompt includes the Venice-provided imageContext as scene context', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        generateProposals.mockResolvedValueOnce({
+            proposals: ['P1'],
+            author: null,
+            scrapeData: null,
+            imageContext: 'a house held up by a golden Bitcoin pillar',
+        });
+        let generateCallBody = null;
+        globalThis.fetch = vi.fn().mockImplementation(async (url, init) => {
+            if (url === '/api/venice/generate-image') {
+                generateCallBody = JSON.parse(init.body);
+                return { ok: true, json: async () => ({ imageData: 'data:image/png;base64,AIDATA' }) };
+            }
+            return { ok: true, json: async () => ({ imageData: null }) };
+        });
+
+        render(<PostPage selectedTag="important" />);
+        await waitFor(() => expect(generateProposals).toHaveBeenCalled());
+        await switchToImages();
+
+        await userEvent.click(screen.getByTestId('image-option-ai'));
+
+        await waitFor(() => expect(generateCallBody).toBeTruthy());
+        expect(generateCallBody.prompt).toContain('a house held up by a golden Bitcoin pillar');
+    });
+
+    it('image context is editable and the edited value is sent in the AI image prompt', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        generateProposals.mockResolvedValueOnce({
+            proposals: ['P1'],
+            author: null,
+            scrapeData: null,
+            imageContext: 'a house held up by a golden Bitcoin pillar',
+        });
+        let generateCallBody = null;
+        globalThis.fetch = vi.fn().mockImplementation(async (url, init) => {
+            if (url === '/api/venice/generate-image') {
+                generateCallBody = JSON.parse(init.body);
+                return { ok: true, json: async () => ({ imageData: 'data:image/png;base64,AIDATA' }) };
+            }
+            return { ok: true, json: async () => ({ imageData: null }) };
+        });
+
+        render(<PostPage selectedTag="important" />);
+        await waitFor(() => expect(generateProposals).toHaveBeenCalled());
+        await switchToImages();
+
+        // Field is pre-filled with the Venice-provided context and editable
+        const contextInput = screen.getByLabelText(/image context/i);
+        await waitFor(() => expect(contextInput.value).toBe('a house held up by a golden Bitcoin pillar'));
+        await userEvent.clear(contextInput);
+        await userEvent.type(contextInput, 'two robots shaking hands over a ledger');
+
+        await userEvent.click(screen.getByTestId('image-option-ai'));
+
+        await waitFor(() => expect(generateCallBody).toBeTruthy());
+        expect(generateCallBody.prompt).toContain('two robots shaking hands over a ledger');
+        expect(generateCallBody.prompt).not.toContain('golden Bitcoin pillar');
+    });
+
+    it('AI image prompt falls back to the article title for scene context when no imageContext exists', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        let generateCallBody = null;
+        globalThis.fetch = vi.fn().mockImplementation(async (url, init) => {
+            if (url === '/api/venice/generate-image') {
+                generateCallBody = JSON.parse(init.body);
+                return { ok: true, json: async () => ({ imageData: 'data:image/png;base64,AIDATA' }) };
+            }
+            return { ok: true, json: async () => ({ imageData: null }) };
+        });
+
+        render(<PostPage selectedTag="important" />);
+        await screen.findByLabelText(/quote/i);
+        await switchToImages();
+
+        await userEvent.click(screen.getByTestId('image-option-ai'));
+
+        await waitFor(() => expect(generateCallBody).toBeTruthy());
+        expect(generateCallBody.prompt).toContain('Article One');
     });
 
     it('selects an image option when clicked (if image exists)', async () => {

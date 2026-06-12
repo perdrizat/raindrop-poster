@@ -274,9 +274,13 @@ const SetupPage = () => {
                 <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 mb-6">
                     <div className="flex flex-col space-y-2">
                         <label htmlFor="objectives-input" className="text-base font-bold text-gray-900 dark:text-white">Custom AI Prompt (Objectives)</label>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                            Steers the tone, style, and themes of AI post proposals — e.g. your voice (I/you), audience, and recurring topics to connect articles to.
+                            Length limits and output format are enforced automatically based on your Buffer channels, so no need to specify them here.
+                        </p>
                         <textarea
                             id="objectives-input"
-                            rows="2"
+                            rows="10"
                             value={objectives}
                             onChange={(e) => setObjectives(e.target.value)}
                             placeholder="E.g., Propose engaging social media posts that help me increase my follower count..."

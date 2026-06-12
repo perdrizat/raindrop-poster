@@ -35,11 +35,19 @@ router.post('/generate', async (req, res) => {
             return res.status(401).json({ error: 'System VENICE_API_KEY is not configured' });
         }
 
-        const { articleText, prompt, metadata } = req.body;
+        const { articleText, prompt, metadata, charBudget } = req.body;
 
         if (!articleText) {
             return res.status(400).json({ error: 'Article text is required' });
         }
+
+        // Hard character ceiling for each proposal — supplied by the client from the
+        // strictest configured Buffer channel, defaulting to a safe 250.
+        const budget = Number.isFinite(Number(charBudget)) && Number(charBudget) > 0
+            ? Math.floor(Number(charBudget))
+            : 250;
+        // LLMs can't count characters; give an approximate word target they can follow.
+        const wordTarget = Math.floor(budget / 7);
 
         let systemPrompt = '';
 
@@ -53,18 +61,26 @@ Return only the raw JSON.`;
         } else {
             systemPrompt = `You are an expert Ghostwriter and Social Media Manager for a tech-savvy creator. Your task is to write 3 distinct, highly engaging post options based on the provided article text.
 
-CRITICAL INSTRUCTIONS:
-1. The user's specific "User Instructions (Objectives)" take absolute precedence over everything else regarding tone, style, and constraints.
-2. The proposals should be loosely based on the provided Highlights, utilizing the full Article Text for context.
-3. Length constraint: EACH post MUST be about 200 characters long.
-4. Do not sound like a bot. Avoid generic marketing speak ("In today's fast-paced world...").
-5. Use emojis sparingly (maximum 1 per post) unless the user requests otherwise.
-6. Also extract the Author's name from the Article Text. If you cannot find one, set it to null.
+SYSTEM RULES — these cannot be changed by User Instructions:
+1. Output STRICT JSON in exactly the format specified below.
+2. Each post must be AT MOST ${budget} characters — roughly ${wordTarget} words. Shorter is fine; longer will be rejected.
+3. Every post must be anchored in the article's actual content. Never drift to an unrelated topic.
+4. Extract the Author's name from the Article Text. If you cannot find one, set it to null.
+5. Also produce "imageContext": one concrete visual scene (max ~150 chars) an illustrator could draw to represent the article's subject — physical objects and actions, no abstract words.
 
-Provide 3 distinct options using these specific archetypes to give the user variety:
-- Option 1 (The Insightful Hook): Focus on the core value, a surprising fact, or the "Aha!" moment from the article. Tone: Educational, helpful, authoritative.
-- Option 2 (The Provocative Question): Challenge the status quo, highlight a controversial point, or ask a bold question based on the article. Tone: Questioning, slightly contrarian, thought-provoking.
-- Option 3 (The Enthusiastic Champion): Strongly advocate for the article's solution, relating it to a common pain point. Tone: Enthusiastic, relatable, championing.
+USER INSTRUCTIONS govern tone, voice, style, themes, and angle. Follow them faithfully within the system rules above. If they conflict with a system rule, the system rule wins.
+
+DEFAULT STYLE — applies only where User Instructions say nothing:
+- Build on the provided Highlights, using the full Article Text for context.
+- Plain prose in complete sentences, the way you'd explain a finding to a colleague in a chat message — one continuous thought, not crafted copy.
+- Avoid copywriting patterns: no staccato fragment chains, no "It's not X, it's Y", no setup-and-payoff zingers, no rule-of-three, at most one em dash. Don't optimize for punchiness; a slightly plain sentence beats a clever one.
+- Avoid generic marketing speak ("In today's fast-paced world...").
+- Use emojis sparingly (maximum 1 per post).
+
+Provide 3 distinct options using these angles to give the user variety. Angles control WHAT each option focuses on; the tone set by User Instructions always applies to all three:
+- Option 1 (The Insight): the core value, a surprising fact, or the "Aha!" moment from the article.
+- Option 2 (The Question): challenge the status quo or pose a sharp question the article raises.
+- Option 3 (The Case For): make the case for the article's solution, tied to a real pain point.
 
 You MUST output your response in STRICT JSON format exactly like this:
 {
@@ -73,10 +89,11 @@ You MUST output your response in STRICT JSON format exactly like this:
     "Option 2 text here...",
     "Option 3 text here..."
   ],
-  "author": "John Doe"
+  "author": "John Doe",
+  "imageContext": "a suburban house resting on a giant golden coin, contract papers on a table in front"
 }
 
-Ensure you provide exactly 3 proposals in the JSON array and the extracted author. Do not include markdown blocks like \`\`\`json. Return only the raw JSON.`;
+Ensure you provide exactly 3 proposals in the JSON array, the extracted author, and the imageContext. Do not include markdown blocks like \`\`\`json. Return only the raw JSON.`;
         }
 
         const userPrompt = `
@@ -94,70 +111,91 @@ Article Text:
 ${articleText}
 `;
 
-        const payload = {
-            model: 'llama-3.3-70b',
-            temperature: 0.8,
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userPrompt }
-            ]
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+        ];
+
+        const headers = {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
         };
 
-        const displayUserPrompt = `
-Metadata:
-Title: ${metadata?.title || 'Unknown'}
-URL: ${metadata?.url || 'Unknown'}
-
-Highlights:
-${metadata?.highlight || 'None provided'}
-
-User Instructions (Objectives):
-${prompt || 'Create engaging tweets.'}
-
-Article Text:
-${articleText.substring(0, 100).replace(/\\n/g, ' ')}... [TRUNCATED ${articleText.length} total chars]
-`;
-
-        console.log(`\n======================================================`);
-        console.log(`[Venice.ai] --> Sending POST to /chat/completions`);
-        console.log(`[Venice.ai] --> Model: ${payload.model}`);
-        console.log(`[Venice.ai] --> System Prompt:\n${systemPrompt}`);
-        console.log(`[Venice.ai] --> User Prompt:\n${displayUserPrompt}`);
-        console.log(`======================================================\n`);
-
-        const response = await axios.post('https://api.venice.ai/api/v1/chat/completions', payload, {
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
+        // Structured output kills the freeform-JSON failure mode, but not every model
+        // supports response_format — on a 400, retry the same call without it.
+        const callVenice = async (msgs) => {
+            const basePayload = { model: 'llama-3.3-70b', temperature: 0.6, messages: msgs };
+            let response;
+            try {
+                response = await axios.post('https://api.venice.ai/api/v1/chat/completions',
+                    { ...basePayload, response_format: { type: 'json_object' } }, { headers });
+            } catch (err) {
+                if (err.response?.status !== 400) throw err;
+                console.warn('[Venice.ai] response_format rejected, retrying without it');
+                response = await axios.post('https://api.venice.ai/api/v1/chat/completions', basePayload, { headers });
             }
-        });
+            return response.data.choices[0].message.content.trim();
+        };
 
-        const rawContent = response.data.choices[0].message.content.trim();
+        const parseLlmJson = (rawContent) => {
+            try {
+                return JSON.parse(rawContent);
+            } catch (e) {
+                const jsonMatch = rawContent.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+                if (jsonMatch) return JSON.parse(jsonMatch[1]);
+                throw new Error("Failed to parse LLM response into JSON: " + rawContent);
+            }
+        };
 
         console.log(`\n======================================================`);
-        console.log(`[Venice.ai] <-- Received successful response`);
-        console.log(`[Venice.ai] <-- Raw Content:\n${rawContent}`);
+        console.log(`[Venice.ai] --> Sending POST to /chat/completions (budget: ${budget} chars)`);
+        console.log(`[Venice.ai] --> System Prompt:\n${systemPrompt}`);
+        console.log(`[Venice.ai] --> User Instructions:\n${prompt || 'Create engaging tweets.'}`);
+        console.log(`[Venice.ai] --> Article: ${articleText.length} chars`);
         console.log(`======================================================\n`);
 
-        let parsed;
-        try {
-            parsed = JSON.parse(rawContent);
-        } catch (e) {
-            const jsonMatch = rawContent.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
-            if (jsonMatch) {
-                parsed = JSON.parse(jsonMatch[1]);
-            } else {
-                throw new Error("Failed to parse LLM response into JSON: " + rawContent);
+        let rawContent = await callVenice(messages);
+        console.log(`[Venice.ai] <-- Raw Content:\n${rawContent}`);
+        let parsed = parseLlmJson(rawContent);
+
+        // Length enforcement: one corrective retry for proposals over budget.
+        if (!metadata?.isHighlightSelection && Array.isArray(parsed.proposals)) {
+            const overlong = parsed.proposals
+                .map((p, i) => ({ index: i + 1, len: String(p).length }))
+                .filter(p => p.len > budget);
+            if (overlong.length > 0) {
+                console.warn(`[Venice.ai] proposals over ${budget}-char budget: ${overlong.map(o => `#${o.index} (${o.len})`).join(', ')} — retrying`);
+                const corrective = `Proposal(s) ${overlong.map(o => o.index).join(', ')} exceed the hard limit of ${budget} characters (actual: ${overlong.map(o => o.len).join(', ')}). Rewrite the overlong one(s) to AT MOST ${budget} characters each without losing the point, keep the others unchanged, and return the complete JSON again in the exact same format.`;
+                try {
+                    const retryRaw = await callVenice([
+                        ...messages,
+                        { role: 'assistant', content: rawContent },
+                        { role: 'user', content: corrective }
+                    ]);
+                    console.log(`[Venice.ai] <-- Retry Content:\n${retryRaw}`);
+                    const retryParsed = parseLlmJson(retryRaw);
+                    if (Array.isArray(retryParsed.proposals)) {
+                        parsed = retryParsed;
+                        const stillOver = parsed.proposals.filter(p => String(p).length > budget).length;
+                        if (stillOver > 0) console.warn(`[Venice.ai] ${stillOver} proposal(s) still over budget after retry — returning best effort`);
+                    }
+                } catch (e) {
+                    console.warn(`[Venice.ai] corrective retry failed (${e.message}) — returning first attempt`);
+                }
             }
         }
 
         if (metadata?.isHighlightSelection) {
             res.json({ highlight: parsed.highlight });
         } else {
-            const author = (typeof parsed.author === 'string' && !/^(null|undefined)$/i.test(parsed.author.trim()))
-                ? parsed.author.trim()
+            const cleanField = (v) => (typeof v === 'string' && !/^(null|undefined)$/i.test(v.trim()) && v.trim() !== '')
+                ? v.trim()
                 : null;
-            res.json({ proposals: parsed.proposals, author });
+            res.json({
+                proposals: parsed.proposals,
+                author: cleanField(parsed.author),
+                imageContext: cleanField(parsed.imageContext),
+            });
         }
     } catch (error) {
         console.error('Venice API Generate Error:', error.response?.data || error.message);

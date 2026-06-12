@@ -1,4 +1,4 @@
-export const generateProposals = async (article, customPrompt, signal) => {
+export const generateProposals = async (article, customPrompt, signal, charBudget) => {
     try {
         if (!article || !article.link) {
             throw new Error("Invalid article provided");
@@ -31,6 +31,7 @@ export const generateProposals = async (article, customPrompt, signal) => {
             body: JSON.stringify({
                 articleText: articleText || 'Text unavailable. Please generate based solely on title and highlights.',
                 prompt: customPrompt,
+                charBudget,
                 metadata: {
                     title: article.title,
                     url: article.link,
@@ -49,6 +50,7 @@ export const generateProposals = async (article, customPrompt, signal) => {
         return {
             proposals: data.proposals || [],
             author: data.author || null,
+            imageContext: data.imageContext || null,
             scrapeData
         };
 

@@ -13,6 +13,22 @@ const parseHashIndex = () => {
     return Number.isInteger(n) && n >= 1 ? n - 1 : 0;
 };
 
+// Char limits per Buffer service; URLs cost a fixed 23 chars plus the "\n\n" separator.
+const CHAR_LIMITS = { bluesky: 300, mastodon: 500, twitter: 280, threads: 500 };
+const SHORTENED_URL_LEN = 23;
+
+// Max post-text length permitted by the strictest configured channel. Falls back to
+// the strictest known limit when no channel has a known service, so the budget is
+// always defined regardless of Buffer setup state.
+const computeMaxPostLen = (channels, hasLink) => {
+    const offset = hasLink ? 2 + SHORTENED_URL_LEN : 0;
+    const limits = (channels || [])
+        .map(ch => CHAR_LIMITS[typeof ch === 'string' ? undefined : ch?.service])
+        .filter(Boolean);
+    const strictest = limits.length ? Math.min(...limits) : Math.min(...Object.values(CHAR_LIMITS));
+    return Math.max(0, strictest - offset);
+};
+
 const escapeHtml = (s) => s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -234,6 +250,9 @@ const PostPage = ({ selectedTag }) => {
 
     // AI image
     const [aiImageData, setAiImageData] = useState(null);
+    // Scene description for AI image generation — pre-filled by Venice from the
+    // article, editable by the user before generating.
+    const [imageContext, setImageContext] = useState('');
     const [isGeneratingAi, setIsGeneratingAi] = useState(false);
     const [aiError, setAiError] = useState(null);
 
@@ -320,6 +339,13 @@ const PostPage = ({ selectedTag }) => {
         return () => window.removeEventListener('hashchange', onHashChange);
     }, []);
 
+    // Pre-scraped article HTML (from the proposals scrape). When present, the server
+    // renders it locally — far more reliable than the live-URL path with its popup
+    // dismissal and archive fallbacks. The initial capture races the scrape and goes
+    // live; every later capture (author re-fire, refresh, retry) uses the HTML.
+    const articleHtmlRef = useRef(null);
+    const captureFailedRef = useRef(false);
+
     const captureScreenshot = useCallback(async (article, signal, overrides = null) => {
         setIsCapturing(true);
         setCaptureError(null);
@@ -331,7 +357,7 @@ const PostPage = ({ selectedTag }) => {
                 date: toIsoDate(article.created),
                 domain: extractDomain(article.link),
                 coverImageUrl: article.cover || null,
-                articleHtml: null,
+                articleHtml: articleHtmlRef.current,
             };
             const response = await fetch('/api/screenshot', {
                 method: 'POST',
@@ -342,9 +368,11 @@ const PostPage = ({ selectedTag }) => {
             if (!response.ok) throw new Error('Failed to capture screenshot');
             const data = await response.json();
             if (signal?.aborted) return;
+            captureFailedRef.current = false;
             if (data.imageData) setScreenshotData(data.imageData);
         } catch (err) {
             if (err?.name === 'AbortError') return;
+            captureFailedRef.current = true;
             setCaptureError('Could not capture screenshot.');
         } finally {
             if (!signal?.aborted) setIsCapturing(false);
@@ -360,7 +388,7 @@ const PostPage = ({ selectedTag }) => {
             date,
             domain,
             coverImageUrl: currentArticle.cover || null,
-            articleHtml: null,
+            articleHtml: articleHtmlRef.current,
         });
     }, [currentArticle, quote, author, date, domain, captureScreenshot]);
 
@@ -372,9 +400,14 @@ const PostPage = ({ selectedTag }) => {
         try {
             const settings = loadSettings();
             const customPrompt = settings.postingObjectives || 'Create engaging posts.';
-            const results = await generateProposals(article, customPrompt, signal);
+            const charBudget = computeMaxPostLen(bufferChannels, !!article.link);
+            const results = await generateProposals(article, customPrompt, signal, charBudget);
             if (signal?.aborted) return;
             setProposals(results.proposals || []);
+            articleHtmlRef.current = results.scrapeData?.html || null;
+            if (results.imageContext) {
+                setImageContext(prev => prev ? prev : results.imageContext);
+            }
             if (results.author) {
                 setAuthor(prev => prev ? prev : results.author);
                 // Re-capture screenshot now that we have the author name
@@ -385,8 +418,11 @@ const PostPage = ({ selectedTag }) => {
                     date: toIsoDate(article.created),
                     domain: extractDomain(article.link),
                     coverImageUrl: article.cover || null,
-                    articleHtml: null,
+                    articleHtml: articleHtmlRef.current,
                 });
+            } else if (captureFailedRef.current && articleHtmlRef.current) {
+                // Initial live capture failed; retry with the scraped HTML now available
+                captureScreenshot(article, signal);
             }
         } catch (error) {
             if (error?.name === 'AbortError') return;
@@ -394,7 +430,7 @@ const PostPage = ({ selectedTag }) => {
         } finally {
             if (!signal?.aborted) setIsGenerating(false);
         }
-    }, [captureScreenshot]);
+    }, [captureScreenshot, bufferChannels]);
 
     // Load new bookmark: cancel prior, reset state, fire fresh requests
     useEffect(() => {
@@ -407,6 +443,9 @@ const PostPage = ({ selectedTag }) => {
         const { signal } = abortRef.current;
 
         // Reset editable fields for new bookmark
+        articleHtmlRef.current = null;
+        captureFailedRef.current = false;
+        setImageContext('');
         setPostContent('');
         setQuote(currentArticle.highlight || '');
         setAuthor(currentArticle.author || '');
@@ -428,9 +467,6 @@ const PostPage = ({ selectedTag }) => {
     }, [currentArticle, triggerGeneration, captureScreenshot]);
 
     // Char limit warnings. We count only postContent + URL (no attribution or quote).
-    const CHAR_LIMITS = { bluesky: 300, mastodon: 500, twitter: 280, threads: 500 };
-    const SHORTENED_URL_LEN = 23;
-
     const computeFullText = (service = null) => {
         const hasLink = !!currentArticle?.link;
         if (!hasLink) return postContent;
@@ -466,27 +502,7 @@ const PostPage = ({ selectedTag }) => {
 
     // Maximum postContent length permitted by the strictest channel.
     // Chars beyond this index should be highlighted as over-limit.
-    // Always applies: uses strictest known limit as a floor even when no channels have a known service
-    // (or no channels are configured), so the user gets feedback regardless of Buffer setup state.
-    const maxAllowedPostLen = (() => {
-        let min = Infinity;
-        for (const ch of bufferChannelObjects) {
-            const limit = CHAR_LIMITS[ch.service];
-            if (!limit) continue;
-            const fullTextLen = computeFullText(ch.service).length;
-            const offset = fullTextLen - postContent.length;
-            const allowed = Math.max(0, limit - offset);
-            if (allowed < min) min = allowed;
-        }
-        if (!Number.isFinite(min)) {
-            // No known-service channels: applying strictest known limit conservatively
-            const strictest = Math.min(...Object.values(CHAR_LIMITS));
-            // Default to non-Bluesky (full URL) offset for safety
-            const offset = computeFullText().length - postContent.length;
-            return Math.max(0, strictest - offset);
-        }
-        return min;
-    })();
+    const maxAllowedPostLen = computeMaxPostLen(bufferChannelObjects, !!currentArticle?.link);
     const hasOverage = maxAllowedPostLen !== null && postContent.length > maxAllowedPostLen;
     const hasCharLimitViolation = charWarnings.length > 0 || hasOverage;
 
@@ -524,7 +540,7 @@ const PostPage = ({ selectedTag }) => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    prompt: `Roy Lichtenstein pop art style comic book panel featuring a large speech bubble with the text: '${quote || currentArticle?.title || ''}' Style elements: Bold black outlines, Ben-Day dot patterns for shading, vibrant primary colors (red, blue, yellow), clean graphic composition. Speech bubble has thick black borders and classic comic book font. Background is solid red with subtle halftone dot texture. No gradients or soft shading. High-contrast, flat colors. Comic book aesthetic with precise geometric shapes.`,
+                    prompt: `Roy Lichtenstein pop art style comic book panel featuring a large speech bubble with the text: '${quote || currentArticle?.title || ''}' The scene around the speech bubble depicts: ${imageContext.trim() || currentArticle?.title || ''}. Style elements: Bold black outlines, Ben-Day dot patterns for shading, vibrant primary colors (red, blue, yellow), clean graphic composition. Speech bubble has thick black borders and classic comic book font. Background is solid red with subtle halftone dot texture. No gradients or soft shading. High-contrast, flat colors. Comic book aesthetic with precise geometric shapes.`,
                 }),
                 signal: abortRef.current?.signal,
             });
@@ -900,6 +916,17 @@ const PostPage = ({ selectedTag }) => {
                             </div>
                             <div className="text-xs text-center text-gray-400 dark:text-gray-500 mb-4 pb-4 border-b border-gray-200 dark:border-gray-700 border-dashed">
                                 Paste an image from clipboard or drag and drop to upload
+                            </div>
+                            <div className="mb-4">
+                                <label htmlFor="image-context-input" className="block text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase mb-1">Image Context</label>
+                                <input
+                                    id="image-context-input"
+                                    type="text"
+                                    value={imageContext}
+                                    onChange={e => setImageContext(e.target.value)}
+                                    placeholder="Scene for the AI image (auto-filled from the article)"
+                                    className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md p-2 text-sm text-gray-800 dark:text-gray-200"
+                                />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <ImageCard

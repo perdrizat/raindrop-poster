@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2026-06-12]
+
+### Added
+- `audit/2026-06-10-code-review.md` — first staff-engineer code review: 3 high findings (SSRF on scrape/screenshot, OAuth token leakage in auth.js logs/responses, lint failing & unenforced), 6 medium, test-gap analysis; both suites verified green
+- AI image generation now gets scene context: Venice returns an `imageContext` line with the proposals, shown as an editable "Image Context" field above the image cards and injected into the image prompt (falls back to article title)
+
+### Fixed
+- Screenshot captures after the initial one (author re-fire, refresh, retry) now reuse the scraped article HTML, fixing repeated failures on popup-heavy sites like bitcoinmagazine.com; a failed initial capture also auto-retries once the scrape completes
+- Fixed the 2 unused-import lint errors flagged by the audit (H3); client lint is green again
+
+### Changed
+- Venice proposal archetypes now prescribe angle only (Insight / Question / Case For); tone fully defers to user objectives instead of mandating "Enthusiastic Champion" style
+- Venice default style now bans LLM copywriting patterns (staccato fragment chains, setup-payoff zingers, rule-of-three) in favor of plain conversational prose
+- Venice proposals now receive the real channel-aware character budget instead of a hardcoded "about 200 chars"
+- Venice route enforces proposal length server-side with one corrective retry when a proposal exceeds the budget
+- Venice temperature lowered 0.8 → 0.6 for better instruction-following with diverse user prompts
+- Venice requests structured JSON output (`response_format: json_object`), falling back automatically if the model rejects it
+- System prompt restructured: user objectives govern tone/style/themes; length and output format are non-negotiable system rules
+- Setup page: objectives textarea enlarged to 10 rows with short usage instructions
+
 ## [2026-06-09]
 
 ### Fixed

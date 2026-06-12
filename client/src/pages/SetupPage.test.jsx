@@ -264,6 +264,16 @@ describe('SetupPage against REAL backend', () => {
 
 
 
+    it('renders a 10-row objectives textarea with short usage instructions', async () => {
+        render(<SetupPage />);
+
+        const textarea = screen.getByPlaceholderText(/Propose engaging/i);
+        expect(textarea).toHaveAttribute('rows', '10');
+        // Short guidance: objectives steer tone/style/themes; length & format are automatic
+        expect(screen.getByText(/tone, style, and themes/i)).toBeInTheDocument();
+        expect(screen.getByText(/length .*(enforced|automatic)/i)).toBeInTheDocument();
+    });
+
     it('updates state when typing into posting objectives textarea', async () => {
         render(<SetupPage />);
 
