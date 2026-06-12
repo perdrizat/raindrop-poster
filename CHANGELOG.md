@@ -8,15 +8,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [2026-06-12]
 
+### Security
+- OAuth callback no longer logs token payloads and returns generic error messages to the browser; provider details go to server logs only (audit H2)
+- `/api/scrape` and `/api/screenshot` now reject non-http(s) URLs and hosts resolving to private/loopback/link-local/metadata addresses (audit H1, SSRF)
+- Documented the no-authentication security model (audit H0): trusted-network deployment only — README "Security Model" section, docker-compose port-binding comment, CONTRIBUTING decision note
+- Rate limiting on screenshot/venice/scrape routes (30 req/5 min), 120s screenshot capture budget, 90s Venice LLM timeouts (audit C3)
+- pnpm refuses package versions younger than 7 days (`minimumReleaseAge`) and restricts install scripts to esbuild/puppeteer/sqlite3
+
 ### Added
+- Graceful shutdown on SIGTERM/SIGINT: drains the Puppeteer browser pool before exit so Docker stop no longer hard-kills Chromium (audit C2)
+- Server ESLint (flat config) and GitHub Actions CI running lint + tests + dependency audit (audit H3)
+- Coverage thresholds in both vitest configs: client 83/76/77/87, server 77/70/69/79 (audit T1)
+- Shared API contract fixtures (`fixtures/apiContracts.js`) used by both server route tests and client mocks to catch shape drift (audit T3)
+- Tests for ThemeToggle, ProviderButton (audit T2) and the 401 → setup redirect (audit T4)
+- Added semantic versioning to frontend (`VITE_APP_VERSION`) replacing the build timestamp
+- Support for streaming Docker image to TrueNAS over SSH with interactive sudo password prompt via `pnpm deploy:remote`
 - `audit/2026-06-10-code-review.md` — first staff-engineer code review: 3 high findings (SSRF on scrape/screenshot, OAuth token leakage in auth.js logs/responses, lint failing & unenforced), 6 medium, test-gap analysis; both suites verified green
 - AI image generation now gets scene context: Venice returns an `imageContext` line with the proposals, shown as an editable "Image Context" field above the image cards and injected into the image prompt (falls back to article title)
 
 ### Fixed
+- Server-side publish validation aligned with the client: Bluesky 300 / Twitter 280 / Threads 500 added, URL weighted at 23 chars + 2-char separator (was a stale 277-rule with Bluesky/Mastodon only)
+- SetupPage effects guard against state updates after unmount; removed duplicate `setTags` call (audit C1)
+- Venice route rejects malformed LLM proposal shapes (non-array, non-strings, empty) with 502 instead of passing them to the UI (audit C5)
+- Moved `jsdom` to production dependencies to fix `ERR_MODULE_NOT_FOUND` crash in Docker container
 - Screenshot captures after the initial one (author re-fire, refresh, retry) now reuse the scraped article HTML, fixing repeated failures on popup-heavy sites like bitcoinmagazine.com; a failed initial capture also auto-retries once the scrape completes
 - Fixed the 2 unused-import lint errors flagged by the audit (H3); client lint is green again
 
 ### Changed
+- Migrated to pnpm workspaces: lockfile, Dockerfile, CI, docs; root scripts `pnpm test` / `pnpm lint` / `pnpm test:e2e`
+- Merged the two parallel screenshot test mechanisms into one: `screenshot-e2e.test.js` now carries all 12 curated URLs with timestamped PNGs in `server/scripts/screenshots/`; deleted `scripts/screenshot-test.sh` + `screenshot-test.mjs`
+- CONTRIBUTING rewritten around the new infra: pnpm rules (no npm/npx, dep workflow), test layers (unit / contract fixtures / coverage floors / E2E screenshots / CI) with explicit anti-drift rules, updated architecture map and key files
+- OAuth callback errors now use the JSON `{ error }` shape like the rest of the API (audit C4)
+- Config lookups unified behind `getConfig(key)` in db.js — env wins, SQLite setting is fallback (audit C6)
 - Venice proposal archetypes now prescribe angle only (Insight / Question / Case For); tone fully defers to user objectives instead of mandating "Enthusiastic Champion" style
 - Venice default style now bans LLM copywriting patterns (staccato fragment chains, setup-payoff zingers, rule-of-three) in favor of plain conversational prose
 - Venice proposals now receive the real channel-aware character budget instead of a hardcoded "about 200 chars"

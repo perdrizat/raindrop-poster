@@ -127,6 +127,36 @@ describe('Venice API Routes', () => {
             expect(res.body.author).toBe('Bob');
         });
 
+        it('returns 502 when proposals is not an array of strings (parseable but wrong shape)', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post.mockResolvedValueOnce({
+                data: { choices: [{ message: { content: '{"proposals": "just one string", "author": null}' } }] }
+            });
+
+            const res = await request(app).post('/api/venice/generate').send({ articleText: 'Text' });
+            expect(res.status).toBe(502);
+        });
+
+        it('returns 502 when proposals array contains non-string entries', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post.mockResolvedValueOnce({
+                data: { choices: [{ message: { content: '{"proposals": [{"text":"nested"},"B","C"], "author": null}' } }] }
+            });
+
+            const res = await request(app).post('/api/venice/generate').send({ articleText: 'Text' });
+            expect(res.status).toBe(502);
+        });
+
+        it('returns 502 when proposals array is empty', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post.mockResolvedValueOnce({
+                data: { choices: [{ message: { content: '{"proposals": [], "author": null}' } }] }
+            });
+
+            const res = await request(app).post('/api/venice/generate').send({ articleText: 'Text' });
+            expect(res.status).toBe(502);
+        });
+
         it('should return 502 when LLM returns completely malformed output', async () => {
             process.env.VENICE_API_KEY = 'mock-key';
 
@@ -166,6 +196,18 @@ describe('Venice API Routes', () => {
             const payload = axios.post.mock.calls[0][1];
             expect(payload.temperature).toBe(0.6);
             expect(payload.response_format).toEqual({ type: 'json_object' });
+        });
+
+        it('bounds each LLM call with a request timeout', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post.mockResolvedValueOnce({
+                data: { choices: [{ message: { content: '{"proposals":["A","B","C"],"author":null}' } }] }
+            });
+
+            await request(app).post('/api/venice/generate').send({ articleText: 'Text' });
+
+            const config = axios.post.mock.calls[0][2];
+            expect(config.timeout).toBe(90_000);
         });
 
         it('injects the charBudget from the request into the system prompt', async () => {
@@ -208,6 +250,19 @@ describe('Venice API Routes', () => {
 
             const systemMsg = axios.post.mock.calls[0][1].messages[0].content;
             expect(systemMsg).toMatch(/cannot be changed by user instructions/i);
+        });
+
+        it('matches the shared veniceGenerate contract shape (client tests mock this exact shape)', async () => {
+            const { veniceGenerateContract, keysOf } = await import('../../fixtures/apiContracts.js');
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post.mockResolvedValueOnce({
+                data: { choices: [{ message: { content: JSON.stringify(veniceGenerateContract) } }] }
+            });
+
+            const res = await request(app).post('/api/venice/generate').send({ articleText: 'Text' });
+
+            expect(res.status).toBe(200);
+            expect(keysOf(res.body)).toEqual(keysOf(veniceGenerateContract));
         });
 
         it('asks the model for an imageContext line and passes it through in the response', async () => {

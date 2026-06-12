@@ -47,6 +47,13 @@ describe('System Configuration Endpoints', () => {
             expect(res.body.hasRaindropConfig).toBe(false);
         });
 
+        it('matches the shared systemStatus contract shape (client tests mock this exact shape)', async () => {
+            const { systemStatusContract, keysOf } = await import('../../fixtures/apiContracts.js');
+            const res = await request(app).get('/api/system/status');
+            expect(res.statusCode).toBe(200);
+            expect(keysOf(res.body)).toEqual(keysOf(systemStatusContract));
+        });
+
         it('should return configured status when required keys exist in DB', async () => {
             await setSetting('RAINDROPIO_CLIENT_ID', 'test_id');
             // Assuming we require at least these two for minimum config

@@ -1,11 +1,17 @@
 {
   "name": "raindrop",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "main": "index.js",
   "scripts": {
-    "dev:client": "npm run dev --prefix client",
-    "dev:server": "npm run dev --prefix server",
-    "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\""
+    "dev:client": "pnpm -C client dev",
+    "dev:server": "pnpm -C server dev",
+    "dev": "concurrently \"pnpm dev:client\" \"pnpm dev:server\"",
+    "test": "pnpm -C client test && pnpm -C server test",
+    "test:e2e": "pnpm -C server test:e2e",
+    "lint": "pnpm -C client lint && pnpm -C server lint",
+    "build": "docker build -t raindrop:$(node -p \"require('./package.json').version\") -t raindrop:latest .",
+    "release": "pnpm version patch",
+    "deploy:remote": "./scripts/deploy-remote.sh"
   },
   "keywords": [],
   "author": "",
@@ -13,9 +19,5 @@
   "description": "",
   "devDependencies": {
     "concurrently": "^9.2.1"
-  },
-  "dependencies": {
-    "connect-sqlite3": "^0.9.16",
-    "sqlite3": "^5.1.7"
   }
 }

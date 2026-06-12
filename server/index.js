@@ -16,6 +16,9 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import connectSqlite3 from 'connect-sqlite3';
 import { getDb, getSetting, setSetting } from './services/db.js';
+import { shutdownPool } from './services/scraperService.js';
+import { registerGracefulShutdown } from './services/shutdown.js';
+import { expensiveRouteLimiter } from './middleware/rateLimits.js';
 
 // Ensure DB is initialized (no .env file needed — all config via Setup page)
 getDb();
@@ -73,10 +76,10 @@ app.use(session({
 app.use('/api/system', systemRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/raindropio', raindropioRoutes);
-app.use('/api/venice', veniceRoutes);
-app.use('/api/scrape', scrapeRoutes);
+app.use('/api/venice', expensiveRouteLimiter, veniceRoutes);
+app.use('/api/scrape', expensiveRouteLimiter, scrapeRoutes);
 app.use('/api/publish', publishRoutes);
-app.use('/api/screenshot', screenshotRoutes);
+app.use('/api/screenshot', expensiveRouteLimiter, screenshotRoutes);
 app.use('/api/cleanup', cleanupRoutes);
 
 // Basic health check endpoint
@@ -98,6 +101,9 @@ if (process.env.NODE_ENV === 'production') {
     });
 }
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
+
+// Drain the Puppeteer pool on docker stop/restart instead of hard-killing Chromium
+registerGracefulShutdown({ server, shutdownPool });

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import SetupPage from './SetupPage';
+import { systemStatusContract, bufferTestContract } from '../../../fixtures/apiContracts.js';
 
 // We will not mock the services anymore, as per user requirement to hit real backend APIs.
 // However, we are running in JSDOM, so we need to ensure fetch can hit http://localhost:3001
@@ -43,14 +44,14 @@ beforeAll(() => {
             if (url === '/api/system/status') {
                 return Promise.resolve({
                     ok: true,
+                    // Shared contract fixture pins the shape; values overridden for this suite
                     json: () => Promise.resolve({
-                        isConfigured: true,
-                        hasRaindropConfig: true,
-                        hasVeniceConfig: true,
-                        hasBufferConfig: true,
-                        hasR2Config: true,
+                        ...systemStatusContract,
                         raindropClientId: 'mock_rd_id',
-                        bufferProfileId: 'mock_buf_id'
+                        bufferProfileId: 'mock_buf_id',
+                        selectedTag: '',
+                        postingObjectives: '',
+                        bufferChannels: [],
                     })
                 });
             }
@@ -63,15 +64,10 @@ beforeAll(() => {
             }
 
             if (url === '/api/auth/buffer/test') {
+                // Shared contract fixture — server route tests assert this exact shape
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({
-                        success: true,
-                        channels: [
-                            { id: '123', service: 'twitter', name: '@mock_x' },
-                            { id: '456', service: 'linkedin', name: 'Mock LinkedIn' }
-                        ]
-                    })
+                    json: () => Promise.resolve(bufferTestContract)
                 });
             }
 

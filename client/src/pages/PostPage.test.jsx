@@ -73,6 +73,23 @@ describe('PostPage — scaffold + navigation', () => {
         await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
     });
 
+    it('redirects to setup with error flag when the bookmark fetch is unauthorized (401)', async () => {
+        // fetchTaggedItems throws 'unauthorized' when Raindrop returns 401 (expired/revoked token)
+        fetchTaggedItems.mockRejectedValueOnce(new Error('unauthorized'));
+
+        const originalLocation = window.location;
+        delete window.location;
+        window.location = { ...originalLocation, href: 'http://localhost/post', assign: vi.fn() };
+        try {
+            render(<PostPage selectedTag="important" />);
+            await waitFor(() => {
+                expect(window.location.href).toBe('/setup?error=raindrop');
+            });
+        } finally {
+            window.location = originalLocation;
+        }
+    });
+
     it('shows empty queue message when no articles found', async () => {
         fetchTaggedItems.mockResolvedValueOnce([]);
         render(<PostPage selectedTag="empty" />);

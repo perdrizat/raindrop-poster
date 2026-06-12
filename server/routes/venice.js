@@ -1,13 +1,13 @@
 import express from 'express';
 import axios from 'axios';
 
-import { getSetting } from '../services/db.js';
+import { getConfig } from '../services/db.js';
 
 const router = express.Router();
 
 router.get('/test', async (req, res) => {
     try {
-        const apiKey = process.env.VENICE_API_KEY || await getSetting('VENICE_API_KEY');
+        const apiKey = await getConfig('VENICE_API_KEY');
         if (!apiKey) {
             return res.status(401).json({ error: 'System VENICE_API_KEY is not configured' });
         }
@@ -30,7 +30,7 @@ router.get('/test', async (req, res) => {
 
 router.post('/generate', async (req, res) => {
     try {
-        const apiKey = process.env.VENICE_API_KEY || await getSetting('VENICE_API_KEY');
+        const apiKey = await getConfig('VENICE_API_KEY');
         if (!apiKey) {
             return res.status(401).json({ error: 'System VENICE_API_KEY is not configured' });
         }
@@ -116,9 +116,13 @@ ${articleText}
             { role: 'user', content: userPrompt }
         ];
 
-        const headers = {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
+        // timeout bounds each LLM call so a hung upstream can't hold the request forever (audit C3)
+        const requestConfig = {
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            },
+            timeout: 90_000,
         };
 
         // Structured output kills the freeform-JSON failure mode, but not every model
@@ -128,11 +132,11 @@ ${articleText}
             let response;
             try {
                 response = await axios.post('https://api.venice.ai/api/v1/chat/completions',
-                    { ...basePayload, response_format: { type: 'json_object' } }, { headers });
+                    { ...basePayload, response_format: { type: 'json_object' } }, requestConfig);
             } catch (err) {
                 if (err.response?.status !== 400) throw err;
                 console.warn('[Venice.ai] response_format rejected, retrying without it');
-                response = await axios.post('https://api.venice.ai/api/v1/chat/completions', basePayload, { headers });
+                response = await axios.post('https://api.venice.ai/api/v1/chat/completions', basePayload, requestConfig);
             }
             return response.data.choices[0].message.content.trim();
         };
@@ -188,6 +192,12 @@ ${articleText}
         if (metadata?.isHighlightSelection) {
             res.json({ highlight: parsed.highlight });
         } else {
+            // Schema check: a parseable-but-wrong LLM response must not flow into the UI
+            if (!Array.isArray(parsed.proposals)
+                || parsed.proposals.length === 0
+                || !parsed.proposals.every(p => typeof p === 'string')) {
+                throw new Error(`LLM returned invalid proposals shape: ${JSON.stringify(parsed.proposals)?.slice(0, 200)}`);
+            }
             const cleanField = (v) => (typeof v === 'string' && !/^(null|undefined)$/i.test(v.trim()) && v.trim() !== '')
                 ? v.trim()
                 : null;
@@ -205,7 +215,7 @@ ${articleText}
 
 router.post('/generate-image', async (req, res) => {
     try {
-        const apiKey = process.env.VENICE_API_KEY || await getSetting('VENICE_API_KEY');
+        const apiKey = await getConfig('VENICE_API_KEY');
         if (!apiKey) {
             return res.status(401).json({ error: 'System VENICE_API_KEY is not configured' });
         }

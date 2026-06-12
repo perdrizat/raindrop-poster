@@ -73,9 +73,12 @@ function App() {
         </div>
 
         <div className="flex items-center gap-4">
-          {import.meta.env.VITE_BUILD_TIME && (
-            <span className="hidden sm:block text-xs text-gray-400 dark:text-gray-500 font-mono">
-              {import.meta.env.VITE_BUILD_TIME}
+          {(import.meta.env.VITE_APP_VERSION || import.meta.env.VITE_BUILD_TIME) && (
+            <span 
+              className="hidden sm:block text-xs text-gray-400 dark:text-gray-500 font-mono cursor-help"
+              title={import.meta.env.VITE_BUILD_TIME ? `Built: ${import.meta.env.VITE_BUILD_TIME}` : undefined}
+            >
+              v{import.meta.env.VITE_APP_VERSION || 'dev'}
             </span>
           )}
           <nav className="flex space-x-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">

@@ -9,6 +9,7 @@ vi.mock('../services/db.js', () => {
     let mockDb = {};
     return {
         getSetting: vi.fn().mockImplementation(async (k) => mockDb[k]),
+        getConfig: vi.fn().mockImplementation(async (k) => process.env[k] || mockDb[k]),
         setSetting: vi.fn().mockImplementation(async (k, v) => { mockDb[k] = v; }),
         trackPostImage: vi.fn().mockResolvedValue({}),
     };
@@ -414,7 +415,7 @@ describe('POST /api/publish', () => {
         expect(response.body.success).toBe(true);
     });
 
-    it('should reject with 400 when text (excluding URL) exceeds Bluesky 277-char limit', async () => {
+    it('should reject with 400 when text exceeds Bluesky 300-char limit (no URL)', async () => {
         process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
         process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
 
@@ -429,12 +430,89 @@ describe('POST /api/publish', () => {
 
         const response = await request(testApp)
             .post('/api/publish')
-            .send({ text: 'A'.repeat(278), targetChannels: ['bsky-1'] });
+            .send({ text: 'A'.repeat(301), targetChannels: ['bsky-1'] });
 
         expect(response.status).toBe(400);
-        expect(response.body.error).toMatch(/Bluesky.*277/i);
+        expect(response.body.error).toMatch(/Bluesky.*300/i);
         // Should NOT have called createPost
         expect(axios.post).toHaveBeenCalledTimes(1); // only GetChannels
+    });
+
+    it('should reject with 400 when Twitter effective length (URL as 23 chars) exceeds 280', async () => {
+        process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
+        process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
+
+        axios.post.mockImplementationOnce(() =>
+            Promise.resolve({ data: { data: { channels: [{ id: 'tw-1', service: 'twitter', name: 'handle' }] } } })
+        );
+
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
+
+        // 256 + "\n\n" (2) + URL-as-23 = 281 > 280
+        const response = await request(testApp)
+            .post('/api/publish')
+            .send({
+                text: 'A'.repeat(256) + '\n\nhttps://example.com/article',
+                articleUrl: 'https://example.com/article',
+                targetChannels: ['tw-1'],
+            });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toMatch(/Twitter.*280/i);
+    });
+
+    it('should accept Twitter post at exactly 280 effective chars (URL as 23)', async () => {
+        process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
+        process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
+
+        axios.post.mockImplementation(() =>
+            Promise.resolve({ data: { data: {
+                channels: [{ id: 'tw-1', service: 'twitter', name: 'handle' }],
+                createPost: { __typename: 'PostActionSuccess', post: { id: 'post-1' } },
+            } } })
+        );
+
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
+
+        // 255 + 2 + 23 = 280 exactly
+        const response = await request(testApp)
+            .post('/api/publish')
+            .send({
+                text: 'A'.repeat(255) + '\n\nhttps://example.com/article',
+                articleUrl: 'https://example.com/article',
+                targetChannels: ['tw-1'],
+            });
+
+        expect(response.status).toBe(200);
+    });
+
+    it('should count Threads text at full length (no URL shortening)', async () => {
+        process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
+        process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
+
+        axios.post.mockImplementationOnce(() =>
+            Promise.resolve({ data: { data: { channels: [{ id: 'th-1', service: 'threads', name: 'handle' }] } } })
+        );
+
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
+
+        // 480 + 2 + 27 (full URL) = 509 > 500
+        const response = await request(testApp)
+            .post('/api/publish')
+            .send({
+                text: 'A'.repeat(480) + '\n\nhttps://example.com/article',
+                articleUrl: 'https://example.com/article',
+                targetChannels: ['th-1'],
+            });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toMatch(/Threads.*500/i);
     });
 
     it('should reject with 400 when text exceeds Mastodon 500-char limit', async () => {
@@ -461,7 +539,7 @@ describe('POST /api/publish', () => {
         process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
         process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
 
-        // Two channels: linkedin (no limit) and bluesky (277 limit, URL excluded)
+        // Two channels: linkedin (no limit) and bluesky (300 limit)
         axios.post.mockImplementationOnce(() =>
             Promise.resolve({ data: { data: { channels: [
                 { id: 'li-1', service: 'linkedin', name: 'profile' },
@@ -475,15 +553,15 @@ describe('POST /api/publish', () => {
 
         const response = await request(testApp)
             .post('/api/publish')
-            .send({ text: 'A'.repeat(278), targetChannels: ['li-1', 'bsky-1'] });
+            .send({ text: 'A'.repeat(301), targetChannels: ['li-1', 'bsky-1'] });
 
         expect(response.status).toBe(400);
-        expect(response.body.error).toMatch(/Bluesky.*277/i);
+        expect(response.body.error).toMatch(/Bluesky.*300/i);
         // Should NOT have posted to any channel
         expect(axios.post).toHaveBeenCalledTimes(1); // only GetChannels
     });
 
-    it('should exclude articleUrl from Bluesky char limit check', async () => {
+    it('should count articleUrl as exactly 23 chars for Bluesky (boundary: 275 + 2 + 23 = 300)', async () => {
         process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
         process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
 
@@ -498,12 +576,11 @@ describe('POST /api/publish', () => {
         testApp.use(express.json());
         testApp.use('/api/publish', publishRoutes);
 
-        // Text without URL is 270 chars (under 277), but with URL appended it would be 270 + \n\n + URL = 300+
-        // Bluesky counts every URL as max 23 chars via facets, so excluding the URL length is fine
+        // 275 post + "\n\n" (2) + URL-as-23 = 300 exactly → allowed
         const response = await request(testApp)
             .post('/api/publish')
             .send({
-                text: 'A'.repeat(270) + '\n\nhttps://example.com/article',
+                text: 'A'.repeat(275) + '\n\nhttps://example.com/article',
                 articleUrl: 'https://example.com/article',
                 targetChannels: ['bsky-1'],
             });
@@ -511,7 +588,31 @@ describe('POST /api/publish', () => {
         expect(response.status).toBe(200);
     });
 
-    it('should still include articleUrl in Mastodon char limit check', async () => {
+    it('should reject Bluesky at 276 + separator + URL-as-23 = 301', async () => {
+        process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
+        process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
+
+        axios.post.mockImplementationOnce(() =>
+            Promise.resolve({ data: { data: { channels: [{ id: 'bsky-1', service: 'bluesky', name: 'handle' }] } } })
+        );
+
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
+
+        const response = await request(testApp)
+            .post('/api/publish')
+            .send({
+                text: 'A'.repeat(276) + '\n\nhttps://example.com/article',
+                articleUrl: 'https://example.com/article',
+                targetChannels: ['bsky-1'],
+            });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toMatch(/Bluesky.*300/i);
+    });
+
+    it('should count articleUrl as 23 chars for Mastodon too', async () => {
         process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
         process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
 
@@ -523,7 +624,7 @@ describe('POST /api/publish', () => {
         testApp.use(express.json());
         testApp.use('/api/publish', publishRoutes);
 
-        // Text is 480 + \n\n + URL = 510, over Mastodon's 500 limit
+        // 480 + 2 + URL-as-23 = 505 > 500
         const response = await request(testApp)
             .post('/api/publish')
             .send({

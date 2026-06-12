@@ -26,7 +26,7 @@ vi.mock('./scraperService.js', () => {
     };
 });
 
-import { captureQuoteScreenshot, formatAttribution, computeClip } from './screenshotService.js';
+import { captureQuoteScreenshot, formatAttribution, computeClip, hasTimeBudget } from './screenshotService.js';
 import { __mockPage as mockPage } from './scraperService.js';
 
 describe('screenshotService', () => {
@@ -231,6 +231,26 @@ describe('computeClip', () => {
         const clip = computeClip({ found: false, rect: null }, VIEWPORT_WIDTH, PAGE_HEIGHT);
         expect(clip.x).toBe(0);
         expect(clip.size).toBe(VIEWPORT_WIDTH);
+    });
+});
+
+describe('hasTimeBudget', () => {
+    it('returns true while enough budget remains', () => {
+        const startedAt = 1_000_000;
+        const now = startedAt + 60_000; // 60s elapsed of 120s budget
+        expect(hasTimeBudget(startedAt, 15_000, 120_000, now)).toBe(true);
+    });
+
+    it('returns false when remaining budget is below the minimum needed', () => {
+        const startedAt = 1_000_000;
+        const now = startedAt + 110_000; // 10s left, need 15s
+        expect(hasTimeBudget(startedAt, 15_000, 120_000, now)).toBe(false);
+    });
+
+    it('returns false once the budget is fully exhausted', () => {
+        const startedAt = 1_000_000;
+        const now = startedAt + 130_000;
+        expect(hasTimeBudget(startedAt, 0, 120_000, now)).toBe(false);
     });
 });
 

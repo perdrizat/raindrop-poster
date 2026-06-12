@@ -1,0 +1,20 @@
+packages:
+  - client
+  - server
+
+# Only these packages may run postinstall build scripts (native binaries).
+# Everything else is denied — supply-chain hardening.
+onlyBuiltDependencies:
+  - esbuild
+  - puppeteer
+  - sqlite3
+
+# Supply-chain protection: refuse to install package versions published less
+# than 7 days ago (10080 minutes), giving the ecosystem time to catch
+# compromised releases before they reach this machine.
+minimumReleaseAge: 10080
+
+allowBuilds:
+  esbuild: true
+  puppeteer: true
+  sqlite3: true

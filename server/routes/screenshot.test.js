@@ -6,8 +6,14 @@ vi.mock('../services/screenshotService.js', () => ({
     captureQuoteScreenshot: vi.fn(),
 }));
 
+// Default: allow all URLs; individual tests override to simulate SSRF rejection
+vi.mock('../services/urlGuard.js', () => ({
+    assertPublicHttpUrl: vi.fn(async (url) => new URL(url)),
+}));
+
 import screenshotRoutes from './screenshot.js';
 import { captureQuoteScreenshot } from '../services/screenshotService.js';
+import { assertPublicHttpUrl } from '../services/urlGuard.js';
 
 const app = express();
 app.use(express.json());
@@ -25,6 +31,18 @@ describe('POST /api/screenshot', () => {
 
         expect(res.status).toBe(400);
         expect(res.body.error).toMatch(/url is required/i);
+    });
+
+    it('should return 400 when the SSRF guard rejects the URL (private host)', async () => {
+        assertPublicHttpUrl.mockRejectedValueOnce(new Error('URL host not allowed'));
+
+        const res = await request(app)
+            .post('/api/screenshot')
+            .send({ url: 'http://localhost:3001/api/system/status', quoteText: 'q' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toMatch(/not allowed/i);
+        expect(captureQuoteScreenshot).not.toHaveBeenCalled();
     });
 
     it('should capture screenshot and return base64 data URL (no upload)', async () => {
@@ -170,19 +188,14 @@ describe('POST /api/screenshot', () => {
         );
     });
 
-    it('should handle invalid URL gracefully for domain extraction', async () => {
-        captureQuoteScreenshot.mockResolvedValueOnce(Buffer.from('png'));
+    it('should reject invalid URLs with 400 instead of attempting capture', async () => {
+        assertPublicHttpUrl.mockRejectedValueOnce(new Error('Invalid URL format'));
 
-        await request(app)
+        const res = await request(app)
             .post('/api/screenshot')
             .send({ url: 'not-a-valid-url' });
 
-        expect(captureQuoteScreenshot).toHaveBeenCalledWith(
-            null,
-            'not-a-valid-url',
-            null,
-            expect.objectContaining({ domain: '' }),
-            undefined
-        );
+        expect(res.status).toBe(400);
+        expect(captureQuoteScreenshot).not.toHaveBeenCalled();
     });
 });

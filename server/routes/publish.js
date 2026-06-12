@@ -1,6 +1,6 @@
 import express from 'express';
 import axios from 'axios';
-import { getSetting, trackPostImage } from '../services/db.js';
+import { getConfig, trackPostImage } from '../services/db.js';
 import { uploadImage } from '../services/imageHostService.js';
 
 const router = express.Router();
@@ -15,8 +15,8 @@ router.post('/', async (req, res) => {
 
         const { targetChannels, bufferMode = 'draft' } = req.body;
 
-        const bufferAccessToken = process.env.BUFFER_ACCESS_TOKEN || await getSetting('BUFFER_ACCESS_TOKEN');
-        const bufferProfileId = process.env.BUFFER_PROFILE_ID || await getSetting('BUFFER_PROFILE_ID');
+        const bufferAccessToken = await getConfig('BUFFER_ACCESS_TOKEN');
+        const bufferProfileId = await getConfig('BUFFER_PROFILE_ID');
 
         if (!bufferAccessToken || !bufferProfileId) {
             return res.status(401).json({ error: 'Buffer credentials not configured' });
@@ -27,9 +27,12 @@ router.post('/', async (req, res) => {
         }
 
         // Fetch channel metadata to enforce per-platform character limits before posting.
-        // Bluesky limit is 277 (not 300): the facet system caps every URL at 23 chars regardless
-        // of actual length, so excluding the URL from the count leaves 300 - 23 = 277 usable chars.
-        const CHAR_LIMITS = { bluesky: 277, mastodon: 500 };
+        // Limits mirror the client (PostPage) exactly: total budget per platform, with the
+        // article URL weighted at a fixed 23 chars for services that shorten URLs
+        // (Bluesky facets, Twitter t.co, Mastodon API). Threads counts the full text.
+        const CHAR_LIMITS = { bluesky: 300, twitter: 280, mastodon: 500, threads: 500 };
+        const SHORTENED_URL_LEN = 23;
+        const URL_SHORTENED_SERVICES = new Set(['bluesky', 'twitter', 'mastodon']);
         const channelsQuery = `
             query GetChannels($input: ChannelsInput!) {
                 channels(input: $input) { id, service }
@@ -44,16 +47,14 @@ router.post('/', async (req, res) => {
         const allChannels = channelsRes.data?.data?.channels || [];
         const channelServiceMap = Object.fromEntries(allChannels.map(ch => [ch.id, ch.service]));
 
-        // Pre-validate text length against all target channels
-        // Bluesky counts URLs separately, so strip the articleUrl from the text for that platform
-        const URL_EXCLUDED_SERVICES = new Set(['bluesky']);
+        // Pre-validate effective text length against all target channels
         const violations = [];
         for (const channelId of targetChannels) {
             const service = channelServiceMap[channelId];
             if (!service || !CHAR_LIMITS[service]) continue;
             let textToCheck = text;
-            if (URL_EXCLUDED_SERVICES.has(service) && articleUrl) {
-                textToCheck = text.replace(`\n\n${articleUrl}`, '').replace(articleUrl, '');
+            if (URL_SHORTENED_SERVICES.has(service) && articleUrl) {
+                textToCheck = text.replace(articleUrl, 'x'.repeat(SHORTENED_URL_LEN));
             }
             if (textToCheck.length > CHAR_LIMITS[service]) {
                 const label = service.charAt(0).toUpperCase() + service.slice(1);

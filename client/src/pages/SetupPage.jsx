@@ -39,6 +39,7 @@ const SetupPage = () => {
 
     // 1. Initial Load & Auth Check
     useEffect(() => {
+        let cancelled = false;
         // Fetch real connection status from backend session
         const verifyStatus = async () => {
             try {
@@ -46,6 +47,7 @@ const SetupPage = () => {
                     checkAuthStatus(),
                     getSystemStatus()
                 ]);
+                if (cancelled) return;
 
                 setConnections({
                     raindropio: authStatus.raindropio,
@@ -71,8 +73,10 @@ const SetupPage = () => {
                 else if (cached.bufferChannels?.length) setBufferChannels(cached.bufferChannels);
 
             } catch (error) {
+                if (cancelled) return;
                 console.error('Initial load failed:', error);
             }
+            if (cancelled) return;
 
             // Clean up the URL if we just returned from OAuth
             const params = new URLSearchParams(window.location.search);
@@ -88,38 +92,42 @@ const SetupPage = () => {
             }
         };
         verifyStatus();
+        return () => { cancelled = true; };
     }, []);
 
     // 2. Fetch tags when Raindrop connects
     useEffect(() => {
-        if (connections.raindropio) {
-            const getTags = async () => {
-                const fetchedTags = await fetchTags();
-                setTags(fetchedTags);
-                setTags(fetchedTags);
-                // If we don't have a tag selected, pick the first one by default
-                setSelectedTag(prev => prev || (fetchedTags.length > 0 ? fetchedTags[0] : ''));
-            };
-            getTags();
-        }
+        if (!connections.raindropio) return;
+        let cancelled = false;
+        const getTags = async () => {
+            const fetchedTags = await fetchTags();
+            if (cancelled) return;
+            setTags(fetchedTags);
+            // If we don't have a tag selected, pick the first one by default
+            setSelectedTag(prev => prev || (fetchedTags.length > 0 ? fetchedTags[0] : ''));
+        };
+        getTags();
+        return () => { cancelled = true; };
     }, [connections.raindropio]); // Only re-run if raindrop connection status changes
 
     // 3. Fetch Buffer channels when Buffer is connected
     useEffect(() => {
-        if (connections.buffer) {
-            const getChannels = async () => {
-                try {
-                    const response = await fetch('/api/auth/buffer/test');
-                    const data = await response.json();
-                    if (data.success && data.channels) {
-                        setAvailableChannels(data.channels);
-                    }
-                } catch (err) {
-                    console.error('Failed to fetch Buffer channels:', err);
+        if (!connections.buffer) return;
+        let cancelled = false;
+        const getChannels = async () => {
+            try {
+                const response = await fetch('/api/auth/buffer/test');
+                const data = await response.json();
+                if (cancelled) return;
+                if (data.success && data.channels) {
+                    setAvailableChannels(data.channels);
                 }
-            };
-            getChannels();
-        }
+            } catch (err) {
+                if (!cancelled) console.error('Failed to fetch Buffer channels:', err);
+            }
+        };
+        getChannels();
+        return () => { cancelled = true; };
     }, [connections.buffer]);
 
     // 4. Auto-migrate legacy Buffer channels (bare string IDs or objects without `service`)

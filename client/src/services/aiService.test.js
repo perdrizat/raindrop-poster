@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import { generateProposals } from './aiService';
+import { veniceGenerateContract } from '../../../fixtures/apiContracts.js';
 
 describe('aiService', () => {
     const originalFetch = globalThis.fetch;
@@ -93,6 +94,25 @@ describe('aiService', () => {
         const article = { title: 'Test', link: 'http://t.com', highlight: '' };
 
         await expect(generateProposals(article, 'prompt')).rejects.toThrow('Venice API down');
+    });
+
+    it('maps every field of the shared veniceGenerate contract into its result', async () => {
+        globalThis.fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ markdown: 'x', html: '<p>x</p>', text: 'x' })
+        });
+        // Shared contract fixture — server route tests assert this exact shape
+        globalThis.fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => veniceGenerateContract
+        });
+
+        const article = { title: 'T', link: 'http://t.com', highlight: '' };
+        const result = await generateProposals(article, 'prompt');
+
+        expect(result.proposals).toEqual(veniceGenerateContract.proposals);
+        expect(result.author).toBe(veniceGenerateContract.author);
+        expect(result.imageContext).toBe(veniceGenerateContract.imageContext);
     });
 
     it('returns imageContext from the generate response (null when absent)', async () => {

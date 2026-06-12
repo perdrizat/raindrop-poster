@@ -8,6 +8,14 @@ vi.mock('../services/scraperService.js', () => ({
     scrapeArticle: vi.fn()
 }));
 
+// Default: allow all URLs; individual tests override to simulate SSRF rejection
+vi.mock('../services/urlGuard.js', () => ({
+    assertPublicHttpUrl: vi.fn(async (url) => {
+        try { return new URL(url); } catch { throw new Error('Invalid URL format'); }
+    }),
+}));
+import { assertPublicHttpUrl } from '../services/urlGuard.js';
+
 const app = express();
 app.use(express.json());
 app.use('/api/scrape', scrapeRoutes);
@@ -33,6 +41,18 @@ describe('Scrape Routes', () => {
 
         expect(res.status).toBe(400);
         expect(res.body).toEqual({ error: 'Invalid URL format' });
+    });
+
+    it('should return 400 when the SSRF guard rejects the URL (private host)', async () => {
+        assertPublicHttpUrl.mockRejectedValueOnce(new Error('URL host not allowed'));
+
+        const res = await request(app)
+            .post('/api/scrape')
+            .send({ url: 'http://169.254.169.254/latest/meta-data/' });
+
+        expect(res.status).toBe(400);
+        expect(res.body).toEqual({ error: 'URL host not allowed' });
+        expect(scraperService.scrapeArticle).not.toHaveBeenCalled();
     });
 
     it('should return { markdown, html, text } from scrape', async () => {

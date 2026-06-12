@@ -1,7 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import axios from 'axios';
-import { getSetting, setSetting } from '../services/db.js';
+import { getSetting, setSetting, getConfig } from '../services/db.js';
 import { testConnection } from '../services/imageHostService.js';
 
 const router = express.Router();
@@ -33,17 +33,17 @@ function getFrontendRedirectUrl(req) {
 router.get('/status', async (req, res) => {
     res.json({
         raindropio: !!(req.session.raindropio || await getSetting('RAINDROPIO_ACCESS_TOKEN')),
-        venice: !!(process.env.VENICE_API_KEY || await getSetting('VENICE_API_KEY')),
-        buffer: !!(process.env.BUFFER_ACCESS_TOKEN || await getSetting('BUFFER_ACCESS_TOKEN')),
-        r2: !!(process.env.R2_ACCOUNT_ID || await getSetting('R2_ACCOUNT_ID')),
+        venice: !!(await getConfig('VENICE_API_KEY')),
+        buffer: !!(await getConfig('BUFFER_ACCESS_TOKEN')),
+        r2: !!(await getConfig('R2_ACCOUNT_ID')),
     });
 });
 
 // --- BUFFER API SMOKE TEST ---
 router.get('/buffer/test', async (req, res) => {
     try {
-        const token = process.env.BUFFER_ACCESS_TOKEN || await getSetting('BUFFER_ACCESS_TOKEN');
-        const profileId = process.env.BUFFER_PROFILE_ID || await getSetting('BUFFER_PROFILE_ID');
+        const token = await getConfig('BUFFER_ACCESS_TOKEN');
+        const profileId = await getConfig('BUFFER_PROFILE_ID');
 
         if (!token || !profileId) {
             return res.status(401).json({ error: 'Not authenticated with Buffer' });
@@ -122,7 +122,7 @@ router.get('/:provider', async (req, res) => {
     switch (provider) {
         case 'raindropio': {
             // Raindrop.io OAuth 2.0 (No PKCE required, standard auth code flow)
-            const clientId = process.env.RAINDROPIO_CLIENT_ID || await getSetting('RAINDROPIO_CLIENT_ID');
+            const clientId = await getConfig('RAINDROPIO_CLIENT_ID');
             const redirectUri = encodeURIComponent(process.env.RAINDROPIO_REDIRECT_URI || `${getServerBaseUrl(req)}/api/auth/raindropio/callback`);
             const url = `https://raindrop.io/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}`;
 
@@ -144,11 +144,11 @@ router.get('/:provider/callback', async (req, res) => {
     const { code, state, error } = req.query;
 
     if (error) {
-        return res.status(400).send(`OAuth Error: ${error}`);
+        return res.status(400).json({ error: `OAuth Error: ${error}` });
     }
 
     if (!code) {
-        return res.status(400).send('OAuth Error: No authorization code returned');
+        return res.status(400).json({ error: 'OAuth Error: No authorization code returned' });
     }
 
     try {
@@ -156,13 +156,13 @@ router.get('/:provider/callback', async (req, res) => {
             case 'raindropio': {
                 const storedState = req.session.raindropioState;
                 if (state !== storedState) {
-                    return res.status(400).send('OAuth state mismatch.');
+                    return res.status(400).json({ error: 'OAuth state mismatch.' });
                 }
 
                 let response;
                 try {
-                    const clientId = process.env.RAINDROPIO_CLIENT_ID || await getSetting('RAINDROPIO_CLIENT_ID');
-                    const clientSecret = process.env.RAINDROPIO_CLIENT_SECRET || await getSetting('RAINDROPIO_CLIENT_SECRET');
+                    const clientId = await getConfig('RAINDROPIO_CLIENT_ID');
+                    const clientSecret = await getConfig('RAINDROPIO_CLIENT_SECRET');
                     const redirectUri = process.env.RAINDROPIO_REDIRECT_URI || `${getServerBaseUrl(req)}/api/auth/raindropio/callback`;
 
                     response = await axios.post('https://raindrop.io/oauth/access_token', {
@@ -172,21 +172,22 @@ router.get('/:provider/callback', async (req, res) => {
                         code,
                         redirect_uri: redirectUri
                     });
-                    console.log("RAINDROP RESPONSE", response.data);
                 } catch (rdError) {
+                    // Detail goes to the server log only — provider payloads can contain
+                    // client IDs and internals that must not reach the browser.
                     console.error('Raindrop Token Exchange Failed:', rdError.response?.data || rdError.message);
-                    return res.status(401).send(`Raindrop OAuth failed: ${JSON.stringify(rdError.response?.data || rdError.message)}`);
+                    return res.status(401).json({ error: 'Raindrop OAuth failed. Check the server logs for details.' });
                 }
 
                 // Raindrop API might return 200 OK but with an error payload
                 if (response.data.error || response.data.result === false) {
                     console.error('Raindrop Token Exchange Returned Error Payload:', response.data);
-                    return res.status(401).send(`Raindrop OAuth failed with payload: ${JSON.stringify(response.data)}`);
+                    return res.status(401).json({ error: 'Raindrop OAuth failed. Check the server logs for details.' });
                 }
 
                 if (!response.data.access_token) {
-                    console.error('Raindrop Token Exchange Missing Access Token:', response.data);
-                    return res.status(401).send(`Raindrop OAuth failed: Missing access_token in response: ${JSON.stringify(response.data)}`);
+                    console.error('Raindrop Token Exchange Missing Access Token. Keys received:', Object.keys(response.data));
+                    return res.status(401).json({ error: 'Raindrop OAuth failed. Check the server logs for details.' });
                 }
 
                 req.session.raindropio = {
@@ -216,7 +217,7 @@ router.get('/:provider/callback', async (req, res) => {
         }
     } catch (err) {
         console.error(`Error during ${provider} OAuth:`, err.response?.data || err.message);
-        return res.status(500).send(`Authentication failed for ${provider}. Check server logs for details.`);
+        return res.status(500).json({ error: `Authentication failed for ${provider}. Check server logs for details.` });
     }
 });
 

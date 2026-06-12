@@ -6,6 +6,7 @@ vi.mock('../services/db.js', () => {
     let mockDb = {};
     return {
         getSetting: vi.fn().mockImplementation(async (k) => mockDb[k]),
+        getConfig: vi.fn().mockImplementation(async (k) => process.env[k] || mockDb[k]),
         setSetting: vi.fn().mockImplementation(async (k, v) => { mockDb[k] = v; }),
     };
 });
@@ -16,7 +17,7 @@ vi.mock('../services/cleanupService.js', () => ({
 }));
 
 import cleanupRoutes from './cleanup.js';
-import { getSetting } from '../services/db.js';
+import { getConfig } from '../services/db.js';
 import { shouldRunCleanup, runCleanup } from '../services/cleanupService.js';
 
 describe('GET /api/cleanup/trigger', () => {
@@ -53,7 +54,7 @@ describe('GET /api/cleanup/trigger', () => {
 
     it('should use DB token when env token is not set', async () => {
         shouldRunCleanup.mockResolvedValueOnce(true);
-        getSetting.mockResolvedValueOnce('db-token');
+        getConfig.mockResolvedValueOnce('db-token');
         runCleanup.mockResolvedValueOnce({ checked: 0, cleaned: 0 });
 
         const app = express();
@@ -66,7 +67,7 @@ describe('GET /api/cleanup/trigger', () => {
 
     it('should skip cleanup when no Buffer token is available', async () => {
         shouldRunCleanup.mockResolvedValueOnce(true);
-        getSetting.mockResolvedValueOnce(null);
+        getConfig.mockResolvedValueOnce(null);
 
         const app = express();
         app.use('/api/cleanup', cleanupRoutes);

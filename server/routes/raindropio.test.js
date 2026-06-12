@@ -10,6 +10,7 @@ vi.mock('../services/db.js', () => {
     let mockDb = {};
     return {
         getSetting: vi.fn().mockImplementation(async (k) => mockDb[k]),
+        getConfig: vi.fn().mockImplementation(async (k) => process.env[k] || mockDb[k]),
         setSetting: vi.fn().mockImplementation(async (k, v) => { mockDb[k] = v; })
     };
 });

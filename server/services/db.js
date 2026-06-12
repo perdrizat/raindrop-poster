@@ -74,6 +74,13 @@ export const getSetting = (key) => {
     });
 };
 
+// Config lookup with a single precedence rule: environment variable wins,
+// SQLite setting is the fallback. Use this instead of hand-rolling
+// `process.env.X || await getSetting('X')` at call sites.
+export const getConfig = async (key) => {
+    return process.env[key] || await getSetting(key);
+};
+
 // --- post_images helpers ---
 
 export const trackPostImage = (postId, r2Key, channelId) => {

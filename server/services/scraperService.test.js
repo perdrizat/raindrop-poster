@@ -25,11 +25,8 @@ import puppeteer from 'puppeteer-extra';
 import { scrapeArticle } from './scraperService.js';
 
 describe('scraperService (Puppeteer)', () => {
-    let mockPage;
-
     beforeEach(() => {
         vi.clearAllMocks();
-        mockPage = puppeteer.launch.mock.results[0]?.value;
     });
 
     it('should return { markdown, html } from scrapeArticle', async () => {

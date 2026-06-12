@@ -1,5 +1,5 @@
 import express from 'express';
-import { getSetting } from '../services/db.js';
+import { getConfig } from '../services/db.js';
 import { shouldRunCleanup, runCleanup } from '../services/cleanupService.js';
 
 const router = express.Router();
@@ -11,7 +11,7 @@ router.get('/trigger', async (req, res) => {
             return res.json({ skipped: true, reason: 'Not due yet' });
         }
 
-        const bufferAccessToken = process.env.BUFFER_ACCESS_TOKEN || await getSetting('BUFFER_ACCESS_TOKEN');
+        const bufferAccessToken = await getConfig('BUFFER_ACCESS_TOKEN');
         if (!bufferAccessToken) {
             return res.json({ skipped: true, reason: 'No Buffer token' });
         }

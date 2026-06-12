@@ -17,6 +17,15 @@ The application supports the following core workflows:
 * **Publishing Workflow:** Review AI proposals, verify screenshot attachments, and publish to Buffer with four scheduling modes: **Now** (immediate), **Prioritize** (top of queue), **Next Available** (end of queue), or **Drafts**.
 * **Buffer Multi-Channel Integration:** Deploy your queue items simultaneously to as many channels as you have configured (e.g. LinkedIn + X/Twitter + Mastodon in a single click).
 
+## Security Model — read before deploying
+
+**This app has no authentication.** It is designed as a single-user tool for a trusted private network. Anyone who can reach the web UI can read your Raindrop bookmarks, publish to your social channels, spend your Venice AI credits, and overwrite your stored API keys.
+
+* **Never expose the app directly to the internet** (no port forwarding, no public reverse proxy without auth).
+* Run it on a trusted LAN, or access it remotely via a VPN such as [Tailscale](https://tailscale.com/) or WireGuard.
+* If you must put it behind a public hostname, front it with an authenticating reverse proxy (e.g. Caddy with `basic_auth`, or an OAuth proxy).
+* To restrict access to the Docker host itself, change the port binding in `docker-compose.yml` to `127.0.0.1:80:80`.
+
 ## Setup & Deployment
 
 On first launch, a **Setup Wizard** guides you through providing your API keys (Raindrop.io, Venice AI, Buffer, Cloudflare R2). All credentials are stored in a local SQLite database — no `.env` editing required.
@@ -26,9 +35,11 @@ On first launch, a **Setup Wizard** guides you through providing your API keys (
 ### Quick Start (Local Development)
 
 ```bash
-npm install && (cd client && npm install) && (cd server && npm install)
-npm run dev
+pnpm install        # installs all workspaces (root, client, server)
+pnpm dev            # starts Vite client (:5173) + Express server (:3001)
 ```
+
+> The project uses **pnpm** workspaces. New package versions younger than 7 days are refused (`minimumReleaseAge` in `pnpm-workspace.yaml`) as supply-chain protection, and only `esbuild`, `puppeteer`, and `sqlite3` may run install scripts.
 
 ### Docker Deployment (Production)
 

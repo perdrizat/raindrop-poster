@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import axios from 'axios';
 import { refreshRaindropToken, getValidRaindropToken, withTokenRefresh } from './raindropAuth.js';
-import { getSetting, setSetting } from './db.js';
+import { setSetting } from './db.js';
 
 vi.mock('axios');
 vi.mock('./db.js', () => {
     let mockDb = {};
     return {
         getSetting: vi.fn().mockImplementation(async (k) => mockDb[k]),
+        getConfig: vi.fn().mockImplementation(async (k) => process.env[k] || mockDb[k]),
         setSetting: vi.fn().mockImplementation(async (k, v) => { mockDb[k] = v; }),
     };
 });

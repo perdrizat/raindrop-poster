@@ -56,7 +56,7 @@ await page.setRequestInterception(true);
 page.on('request', req => req.continue());
 
 console.log('Navigating…');
-await page.goto(URL, { waitUntil: 'networkidle2', timeout: 60000 }).catch(e => {});
+await page.goto(URL, { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {});
 await new Promise(r => setTimeout(r, 3000));
 
 // --- 1. Is the quote text in the DOM? ---

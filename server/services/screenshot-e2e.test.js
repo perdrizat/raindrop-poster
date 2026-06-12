@@ -3,29 +3,34 @@ import { captureQuoteScreenshot } from './screenshotService.js';
 import { scrapeArticle, shutdownPool } from './scraperService.js';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 /**
- * Screenshot E2E Integration Tests
+ * Screenshot E2E Integration Tests — THE single screenshot regression suite.
+ * (Merged from the former scripts/screenshot-test.sh + screenshot-test.mjs on
+ * 2026-06-12; do not create a parallel screenshot test mechanism.)
  *
- * These tests exercise the FULL production pipeline:
- *   1. Scrape the article via Puppeteer → get { markdown, html }
- *   2. Pass the extracted HTML to captureQuoteScreenshot (local rendering path)
- *   3. Save the PNG to /tmp/raindrop-screenshots/ for visual inspection
- *   4. Verify the image was produced and is a reasonably-sized PNG
+ * Exercises the FULL production pipeline on a curated set of problem URLs:
+ *   1. Scrape the article via Puppeteer → { markdown, html }
+ *   2. Pass the extracted HTML to captureQuoteScreenshot (local rendering path,
+ *      with live-URL + archive fallbacks when the quote isn't found)
+ *   3. Assert a plausible PNG came back
+ *   4. Save a timestamped PNG to server/scripts/screenshots/ for visual inspection
  *
- * VISUAL VERIFICATION:
- *   After the test run, the saved images should be inspected (by Claude Code
- *   or a human) to confirm:
- *     (i)   The correct quote is highlighted in yellow
- *     (ii)  Nothing else is highlighted
- *     (iii) No cookie banner / overlay visible
- *     (iv)  Attribution bar is present at the bottom
+ * VISUAL VERIFICATION (the part assertions can't do):
+ *   After the run, inspect the saved images (Claude Code can read them directly):
+ *     (i)   The correct quote is highlighted in yellow — fully, and nothing else
+ *     (ii)  No cookie banner / consent wall / overlay bleeding through
+ *     (iii) Full page width visible, no truncated lines
+ *     (iv)  Attribution bar present and correct at the bottom
  *
- * Run with:
- *   cd server && npx vitest run --config vitest.e2e.config.js
+ * ADDING NEW TEST CASES: append to TEST_CASES below — one entry per URL that
+ * ever failed in production, so regressions stay caught.
+ *
+ * Run with: pnpm test:e2e (repo root) or pnpm -C server test:e2e
  */
 
-const OUTPUT_DIR = '/tmp/raindrop-screenshots';
+const OUTPUT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '../scripts/screenshots');
 
 const TEST_CASES = [
     {
@@ -76,7 +81,39 @@ const TEST_CASES = [
         quote: 'Institutional adoption is a balance sheet reality. $123.5 billion in Bitcoin ETF assets. $35.6 billion in tokenized real-world assets. Over $1 billion in daily on-chain settlement by a single bank. Sovereign wealth funds with billion-dollar Bitcoin positions. A consortium of the largest U.S. banks building a stablecoin. Visa and Mastercard running stablecoin settlement infrastructure. The question has shifted from "will institutions adopt crypto?" to "how fast will the infrastructure scale to meet institutional demand?"',
         attribution: { author: 'Sherlock', date: '2-20-2026', domain: 'sherlock.xyz' },
     },
+    {
+        name: 'Stratechery — Apple/Google Siri quote',
+        url: 'https://stratechery.com/2026/tim-cooks-impeccable-timing/',
+        quote: 'The new Siri still hasn’t launched, and when it does, it will be with Google’s technology at the core',
+        attribution: { author: 'Ben Thompson', date: 'Apr 2026', domain: 'stratechery.com' },
+    },
+    {
+        name: 'Vitalik eth.limo — formal verification AI quote',
+        url: 'https://vitalik.eth.limo/general/2026/05/18/fv.html',
+        quote: 'Formal verification, aided by AI, should be viewed not as totally new paradigm, but as a powerful accelerant of a trend and a paradigm that was already marching forward',
+        attribution: { author: 'Vitalik Buterin', date: '2026-05-18', domain: 'vitalik.eth.limo' },
+    },
+    {
+        name: 'Casa blog — social engineering active-call defense',
+        url: 'https://blog.casa.io/evolving-casas-defenses-against-social-engineering/',
+        quote: "20% of social engineering attacks start with an unexpected call. To protect against these attacks, the app now detects when you're on an active phone call and shows a warning before you send funds. The attacker needs you on the phone because urgency and real-time pressure can override careful thinking",
+        attribution: { author: 'Team Casa', date: '2026-05-26', domain: 'blog.casa.io' },
+    },
+    {
+        name: 'Bitcoin Magazine — Bitcoin-backed mortgage quote',
+        url: 'https://bitcoinmagazine.com/news/bitcoin-buys-a-home-better-and-coinbase',
+        quote: 'The structure involves two separate loans. Borrowers first receive a standard 15- or 30-year Fannie Mae-backed mortgage on the property itself. A second, privately financed loan — secured by pledged Bitcoin or USDC — covers the down payment. Both loans carry the same interest rate and term, consolidating into a single monthly payment',
+        attribution: { author: 'Micah Zimmerman', date: '2026-06-10', domain: 'bitcoinmagazine.com' },
+    },
 ];
+
+// Timestamped filenames so runs accumulate in server/scripts/screenshots/
+// without overwriting — the user compares captures across runs (CONTRIBUTING).
+const timestamp = () => {
+    const now = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}`;
+};
 
 describe('Screenshot E2E Integration', () => {
     afterAll(async () => {
@@ -102,13 +139,13 @@ describe('Screenshot E2E Integration', () => {
         );
 
         expect(buffer).toBeInstanceOf(Buffer);
-        expect(buffer.length).toBeGreaterThan(5000);
+        expect(buffer.length).toBeGreaterThan(10000);
 
         // Step 3: Save to disk for visual inspection
-        const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '_');
-        const outputPath = path.join(OUTPUT_DIR, `${safeName}.png`);
+        const safeName = name.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '');
+        const outputPath = path.join(OUTPUT_DIR, `${timestamp()}_${safeName}.png`);
         fs.writeFileSync(outputPath, buffer);
 
         console.log(`  ✓ ${name} → ${outputPath} (${(buffer.length / 1024).toFixed(0)} KB)`);
-    }, 120000);
+    }, 240000);
 });

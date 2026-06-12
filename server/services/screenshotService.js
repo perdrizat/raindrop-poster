@@ -28,6 +28,19 @@ function wrapArticleHtml(articleHtml) {
 </style></head><body>${articleHtml}</body></html>`;
 }
 
+// Overall wall-clock budget for one capture. Without it, a pathological URL can
+// chain a 60s live load plus three 60s archive fallbacks and hold a browser-pool
+// slot for minutes (audit C3).
+const CAPTURE_BUDGET_MS = 120_000;
+
+/**
+ * True when enough of the capture budget remains to start a step that needs
+ * at least `minRemainingMs`. Pure — `now` injectable for tests.
+ */
+export function hasTimeBudget(startedAt, minRemainingMs, totalBudgetMs = CAPTURE_BUDGET_MS, now = Date.now()) {
+    return (now - startedAt) + minRemainingMs < totalBudgetMs;
+}
+
 /**
  * Captures a square screenshot of a quote within an article.
  * Highlights the quote with a yellow marker and adds an attribution bar.
@@ -48,6 +61,8 @@ export const captureQuoteScreenshot = async (articleHtml, articleUrl, quoteText,
     if (!quoteText && coverImageUrl) {
         return coverImageUrl;
     }
+
+    const startedAt = Date.now();
 
     const browser = await acquireBrowser();
     let page;
@@ -214,6 +229,12 @@ export const captureQuoteScreenshot = async (articleHtml, articleUrl, quoteText,
 
                 for (const fallback of archiveFallbacks) {
                     if (findResult.found) break;
+                    // Each fallback costs up to ~65s; skip the rest when the overall
+                    // capture budget can't absorb another attempt.
+                    if (!hasTimeBudget(startedAt, 20_000)) {
+                        console.warn(`[screenshot] capture budget exhausted (${CAPTURE_BUDGET_MS / 1000}s) — skipping remaining archive fallbacks`);
+                        break;
+                    }
                     try {
                         console.warn(`[screenshot] Quote not found — retrying via ${fallback.name}`);
                         await page.goto(fallback.url, { waitUntil: 'domcontentloaded', timeout: 60000 });

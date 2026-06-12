@@ -12,9 +12,14 @@ vi.mock('@aws-sdk/client-s3', () => {
     };
 });
 
-vi.mock('./db.js', () => ({
-    getSetting: vi.fn(),
-}));
+vi.mock('./db.js', () => {
+    const getSetting = vi.fn();
+    return {
+        getSetting,
+        // Mirror the real precedence: env wins, programmed getSetting is the fallback
+        getConfig: vi.fn().mockImplementation(async (k) => process.env[k] || getSetting(k)),
+    };
+});
 
 import { getSetting } from './db.js';
 

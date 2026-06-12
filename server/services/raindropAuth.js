@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getSetting, setSetting } from './db.js';
+import { getSetting, setSetting, getConfig } from './db.js';
 
 const REFRESH_MARGIN_MS = 5 * 60 * 1000; // Refresh 5 minutes before expiry
 
@@ -9,8 +9,8 @@ const REFRESH_MARGIN_MS = 5 * 60 * 1000; // Refresh 5 minutes before expiry
  */
 export async function refreshRaindropToken() {
     const refreshToken = await getSetting('RAINDROPIO_REFRESH_TOKEN');
-    const clientId = process.env.RAINDROPIO_CLIENT_ID || await getSetting('RAINDROPIO_CLIENT_ID');
-    const clientSecret = process.env.RAINDROPIO_CLIENT_SECRET || await getSetting('RAINDROPIO_CLIENT_SECRET');
+    const clientId = await getConfig('RAINDROPIO_CLIENT_ID');
+    const clientSecret = await getConfig('RAINDROPIO_CLIENT_SECRET');
 
     if (!refreshToken || !clientId || !clientSecret) {
         console.warn('Cannot refresh Raindrop token: missing refresh_token or client credentials');

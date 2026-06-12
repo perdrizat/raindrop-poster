@@ -1,5 +1,6 @@
 import express from 'express';
 import { scrapeArticle } from '../services/scraperService.js';
+import { assertPublicHttpUrl } from '../services/urlGuard.js';
 
 const router = express.Router();
 
@@ -12,9 +13,9 @@ router.post('/', async (req, res) => {
         }
 
         try {
-            new URL(url);
+            await assertPublicHttpUrl(url);
         } catch (e) {
-            return res.status(400).json({ error: 'Invalid URL format' });
+            return res.status(400).json({ error: e.message });
         }
 
         const { markdown, html } = await scrapeArticle(url);

@@ -1,5 +1,6 @@
 import express from 'express';
 import { captureQuoteScreenshot } from '../services/screenshotService.js';
+import { assertPublicHttpUrl } from '../services/urlGuard.js';
 
 const router = express.Router();
 
@@ -9,6 +10,12 @@ router.post('/', async (req, res) => {
 
         if (!url) {
             return res.status(400).json({ error: 'URL is required' });
+        }
+
+        try {
+            await assertPublicHttpUrl(url);
+        } catch (e) {
+            return res.status(400).json({ error: e.message });
         }
 
         // Extract domain from URL or use provided domain

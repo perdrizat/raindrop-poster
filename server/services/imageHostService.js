@@ -1,16 +1,16 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import crypto from 'crypto';
-import { getSetting } from './db.js';
+import { getConfig } from './db.js';
 
 /**
  * Resolves R2 configuration from env vars or DB settings.
  */
 async function getR2Config() {
-    const accountId = process.env.R2_ACCOUNT_ID || await getSetting('R2_ACCOUNT_ID');
-    const accessKeyId = process.env.R2_ACCESS_KEY_ID || await getSetting('R2_ACCESS_KEY_ID');
-    const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY || await getSetting('R2_SECRET_ACCESS_KEY');
-    const bucket = process.env.R2_BUCKET_NAME || await getSetting('R2_BUCKET_NAME');
-    const publicUrl = process.env.R2_PUBLIC_URL || await getSetting('R2_PUBLIC_URL');
+    const accountId = await getConfig('R2_ACCOUNT_ID');
+    const accessKeyId = await getConfig('R2_ACCESS_KEY_ID');
+    const secretAccessKey = await getConfig('R2_SECRET_ACCESS_KEY');
+    const bucket = await getConfig('R2_BUCKET_NAME');
+    const publicUrl = await getConfig('R2_PUBLIC_URL');
 
     if (!accountId || !accessKeyId || !secretAccessKey || !bucket || !publicUrl) {
         throw new Error('Cloudflare R2 is not configured. Please add R2 credentials in Settings.');

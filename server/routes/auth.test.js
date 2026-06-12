@@ -12,6 +12,7 @@ vi.mock('../services/db.js', () => {
     let mockDb = {};
     return {
         getSetting: vi.fn().mockImplementation(async (k) => mockDb[k]),
+        getConfig: vi.fn().mockImplementation(async (k) => process.env[k] || mockDb[k]),
         setSetting: vi.fn().mockImplementation(async (k, v) => { mockDb[k] = v; }),
         _getMockDb: () => mockDb,
         _resetMockDb: () => { mockDb = {}; }
@@ -101,6 +102,18 @@ describe('Auth Routes', () => {
             expect(res.body).toEqual({ error: 'Not authenticated with Buffer' });
         });
 
+        it('matches the shared bufferTest contract shape (client tests mock this exact shape)', async () => {
+            const { bufferTestContract, keysOf } = await import('../../fixtures/apiContracts.js');
+            axios.post.mockResolvedValueOnce({
+                data: { data: { channels: bufferTestContract.channels } }
+            });
+
+            const res = await request(app).get('/api/auth/buffer/test');
+
+            expect(res.status).toBe(200);
+            expect(keysOf(res.body)).toEqual(keysOf(bufferTestContract));
+        });
+
         it('should return channel details if Buffer token is valid', async () => {
             axios.post.mockResolvedValueOnce({
                 data: {
@@ -181,12 +194,12 @@ describe('Auth Routes', () => {
             });
         });
 
-        it('should handle Raindrop.io callback with 200 OK error payload', async () => {
+        it('should handle Raindrop.io callback with 200 OK error payload without leaking it', async () => {
             axios.post.mockResolvedValueOnce({
                 data: {
                     result: false,
                     status: 400,
-                    errorMessage: 'Incorrect redirect_uri'
+                    errorMessage: 'Incorrect redirect_uri for client abc-123'
                 }
             });
 
@@ -195,7 +208,58 @@ describe('Auth Routes', () => {
                 .set('x-mock-oauth-state', 'true');
 
             expect(res.status).toBe(401);
-            expect(res.text).toContain('Raindrop OAuth failed with payload');
+            // JSON error shape, consistent with the rest of the API (audit C4)
+            expect(res.body.error).toMatch(/Raindrop OAuth failed/);
+            // Provider payload internals must never reach the browser
+            expect(res.text).not.toContain('Incorrect redirect_uri');
+            expect(res.text).not.toContain('abc-123');
+        });
+
+        it('token-exchange network failure returns a generic message without provider details', async () => {
+            const err = new Error('Request failed');
+            err.response = { data: { error: 'invalid_client', client_id: 'secret-client-id' } };
+            axios.post.mockRejectedValueOnce(err);
+
+            const res = await request(app)
+                .get('/api/auth/raindropio/callback?state=mocked-state&code=mocked-code')
+                .set('x-mock-oauth-state', 'true');
+
+            expect(res.status).toBe(401);
+            expect(res.body.error).toMatch(/Raindrop OAuth failed/);
+            expect(res.text).not.toContain('secret-client-id');
+            expect(res.text).not.toContain('invalid_client');
+        });
+
+        it('OAuth error and state-mismatch responses use the JSON error shape', async () => {
+            const errRes = await request(app)
+                .get('/api/auth/raindropio/callback?error=access_denied');
+            expect(errRes.status).toBe(400);
+            expect(errRes.body.error).toMatch(/access_denied/);
+
+            const noCodeRes = await request(app)
+                .get('/api/auth/raindropio/callback?state=whatever');
+            expect(noCodeRes.status).toBe(400);
+            expect(noCodeRes.body.error).toMatch(/authorization code/i);
+        });
+
+        it('never logs the token response payload on successful exchange', async () => {
+            const logSpy = vi.spyOn(console, 'log');
+            axios.post.mockResolvedValueOnce({
+                data: {
+                    access_token: 'rd_access_LEAK',
+                    refresh_token: 'rd_refresh_LEAK',
+                    expires_in: 3600
+                }
+            });
+
+            await request(app)
+                .get('/api/auth/raindropio/callback?state=mocked-state&code=mocked-code')
+                .set('x-mock-oauth-state', 'true');
+
+            const logged = logSpy.mock.calls.map(c => c.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')).join('\n');
+            expect(logged).not.toContain('rd_access_LEAK');
+            expect(logged).not.toContain('rd_refresh_LEAK');
+            logSpy.mockRestore();
         });
 
         it('should return 400 for an unknown provider in callback', async () => {

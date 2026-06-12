@@ -38,7 +38,7 @@ export const findQuoteInDOM = (quote) => {
             }, false);
 
             let node;
-            while (node = walker.nextNode()) {
+            while ((node = walker.nextNode()) !== null) {
                 const rawText = node.nodeValue;
                 let m;
                 const nodeRegex = /[a-z0-9]+/ig;

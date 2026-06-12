@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { getDb, getSetting, setSetting, closeDb, trackPostImage, getUncleanedImages, removePostImage } from './db.js';
+import { getDb, getSetting, setSetting, getConfig, closeDb, trackPostImage, getUncleanedImages, removePostImage } from './db.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -50,6 +50,32 @@ describe('Database Service', () => {
         getDb(TEST_DB);
         const value = await getSetting('missing_key');
         expect(value).toBeNull();
+    });
+
+    // --- getConfig: env precedence over SQLite ---
+
+    it('getConfig prefers process.env over the stored setting', async () => {
+        getDb(TEST_DB);
+        await setSetting('MY_CONF_KEY', 'from-db');
+        process.env.MY_CONF_KEY = 'from-env';
+        try {
+            expect(await getConfig('MY_CONF_KEY')).toBe('from-env');
+        } finally {
+            delete process.env.MY_CONF_KEY;
+        }
+    });
+
+    it('getConfig falls back to the stored setting when env is unset', async () => {
+        getDb(TEST_DB);
+        await setSetting('MY_CONF_KEY', 'from-db');
+        delete process.env.MY_CONF_KEY;
+        expect(await getConfig('MY_CONF_KEY')).toBe('from-db');
+    });
+
+    it('getConfig returns null when neither env nor setting exists', async () => {
+        getDb(TEST_DB);
+        delete process.env.NOWHERE_KEY;
+        expect(await getConfig('NOWHERE_KEY')).toBeNull();
     });
 
     // --- post_images table ---

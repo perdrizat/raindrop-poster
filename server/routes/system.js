@@ -1,5 +1,5 @@
 import express from 'express';
-import { getSetting, setSetting } from '../services/db.js';
+import { getSetting, setSetting, getConfig } from '../services/db.js';
 
 const router = express.Router();
 
@@ -9,7 +9,7 @@ const router = express.Router();
  * But Raindrop.io is universally required to fetch content.
  */
 const checkMinimumConfig = async () => {
-    const raindropId = process.env.RAINDROPIO_CLIENT_ID || await getSetting('RAINDROPIO_CLIENT_ID');
+    const raindropId = await getConfig('RAINDROPIO_CLIENT_ID');
     const hasRaindropConfig = !!raindropId;
 
     const bufferChannelsRaw = await getSetting('BUFFER_CHANNELS');
@@ -19,11 +19,11 @@ const checkMinimumConfig = async () => {
     return {
         isConfigured: hasRaindropConfig,
         hasRaindropConfig,
-        hasVeniceConfig: !!(process.env.VENICE_API_KEY || await getSetting('VENICE_API_KEY')),
-        hasBufferConfig: !!(process.env.BUFFER_ACCESS_TOKEN || await getSetting('BUFFER_ACCESS_TOKEN')),
-        hasR2Config: !!(process.env.R2_ACCOUNT_ID || await getSetting('R2_ACCOUNT_ID')),
+        hasVeniceConfig: !!(await getConfig('VENICE_API_KEY')),
+        hasBufferConfig: !!(await getConfig('BUFFER_ACCESS_TOKEN')),
+        hasR2Config: !!(await getConfig('R2_ACCOUNT_ID')),
         raindropClientId: raindropId || '',
-        bufferProfileId: process.env.BUFFER_PROFILE_ID || await getSetting('BUFFER_PROFILE_ID') || '',
+        bufferProfileId: await getConfig('BUFFER_PROFILE_ID') || '',
         selectedTag: await getSetting('SELECTED_TAG') || '',
         postingObjectives: await getSetting('POSTING_OBJECTIVES') || '',
         bufferChannels,
