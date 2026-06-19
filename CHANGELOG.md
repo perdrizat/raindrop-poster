@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-06-19
+
+### Added
+- Single-source the Node version in `.node-version` (`24.15.0`), read by CI via `node-version-file`; a routine Node bump touches only that file. Node 24.16.0/24.17.0 have a regression ([nodejs/node#63487](https://github.com/nodejs/node/issues/63487)) where `extract-zip` stalls on large entries, so puppeteer's Chrome install silently extracts no `chrome` binary.
+- `engines.node` (`>=22.13.0 <24.16.0`) + `engine-strict=true` (`.npmrc`) as a warn tripwire for the buggy 24.16/24.17 (pnpm warns, but does not hard-fail, on the project's own engines); the real guard is Node selection via `.node-version` + `fnm default`.
+
+### Changed
+- CI runs the repo-pinned Node via `node-version-file: .node-version` (was hardcoded Node 22).
+- Refactor server internals for clarity (no behavior change): promisify helpers in `db.js`, shared request/error helpers in `raindropio.js`, `delay()` in `screenshotService.js`, merged R2 client helper in `imageHostService.js`, hoisted/loop-driven `saveConfig` in `system.js`.
+- Docker: use the base image's bundled Chrome (`PUPPETEER_CACHE_DIR` → `/home/pptruser/.cache/puppeteer`) and drop the redundant `puppeteer browsers install chrome` step and `.puppeteer_cache` dir — no second browser download.
+- Client cleanups (no behavior change): de-duplicate `ThemeToggle` DOM writes into its effect, route PostPage's system-status fetch through `systemService.getSystemStatus()`, and extract the shared `publishDisabled` condition for the four publish buttons.
+- E2E suite preflights Chrome launch (`beforeAll`) and fails fast with actionable guidance — missing binary vs. missing system libs (enumerated via `ldd`) — instead of 12× 30s pool-acquire timeouts and a `/tmp` profile storm. Document the local Chrome system-lib prerequisite in CONTRIBUTING.
+
+### Fixed
+- Pin Docker base image to `ghcr.io/puppeteer/puppeteer:24.43.1` (was `:latest`); the floating tag drifted a newer Chrome that broke `puppeteer browsers install chrome` on a fresh devbox.
+
+### Security
+- `pnpm audit` overrides (via `--fix=override`): form-data ≥4.0.6 (high CRLF; via axios/supertest), undici ≥7.28.0 (high TLS-bypass/DoS/routing + moderate cache; dev-only via vitest/jsdom), esbuild ≥0.28.1 (low, dev-only). Patched versions added to `minimumReleaseAgeExclude`; `pnpm audit` now clean.
+
 ## [1.1.1] - 2026-06-13
 
 ### Security

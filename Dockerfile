@@ -22,7 +22,10 @@ RUN node -p "'VITE_APP_VERSION=' + require('./package.json').version" >> /app/cl
 RUN pnpm -C client build
 
 # Stage 2: Setup the production Node server with Puppeteer
-FROM ghcr.io/puppeteer/puppeteer:latest
+# Pin to the project's puppeteer version (server/package.json) so the Chrome the
+# base image ships matches what the app launches. `:latest` floats and drifted a
+# newer Chrome across devboxes, breaking `puppeteer browsers install chrome`.
+FROM ghcr.io/puppeteer/puppeteer:24.43.1
 
 # We need to run as root to bind to port 80
 USER root
@@ -34,11 +37,13 @@ ENV NODE_ENV=production
 ENV PORT=80
 ENV DATA_DIR=/app/data
 
-# Configure Puppeteer cache directory to be local to the app
-ENV PUPPETEER_CACHE_DIR=/app/.puppeteer_cache
+# Use the Chrome the base image already ships. Because the base image tag is
+# pinned to the project's puppeteer version, its bundled browser is exactly the
+# build puppeteer looks for — so we point at that cache instead of re-downloading.
+ENV PUPPETEER_CACHE_DIR=/home/pptruser/.cache/puppeteer
 
 # Create data directory for SQLite persistence
-RUN mkdir -p /app/data && mkdir -p /app/.puppeteer_cache
+RUN mkdir -p /app/data
 
 WORKDIR /app
 
@@ -46,9 +51,6 @@ WORKDIR /app
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY server/package.json ./server/
 RUN pnpm install --filter server --prod --frozen-lockfile
-
-# Explicitly install the browser for the version of Puppeteer we are using
-RUN pnpm -C server exec puppeteer browsers install chrome
 
 # Copy server source
 COPY server/ ./server/

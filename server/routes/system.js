@@ -3,6 +3,15 @@ import { getSetting, setSetting, getConfig } from '../services/db.js';
 
 const router = express.Router();
 
+// Persist a config value to SQLite and mirror it into process.env, skipping
+// blanks so a partial form submission never wipes existing credentials.
+const saveConfig = async (key, value) => {
+    if (value && value.trim() !== '') {
+        await setSetting(key, value.trim());
+        process.env[key] = value.trim();
+    }
+};
+
 /**
  * Validates if the most basic required keys exist to launch the app.
  * A user might only have Buffer configured, or only Venice configured.
@@ -59,25 +68,19 @@ router.post('/configure', async (req, res) => {
         } = req.body;
 
         // Persist to SQLite & Update Memory concurrently if provided
-        const saveConfig = async (key, value) => {
-            if (value && value.trim() !== '') {
-                await setSetting(key, value.trim());
-                process.env[key] = value.trim();
-            }
+        const secretConfig = {
+            RAINDROPIO_CLIENT_ID: raindropClientId,
+            RAINDROPIO_CLIENT_SECRET: raindropClientSecret,
+            VENICE_API_KEY: veniceApiKey,
+            BUFFER_ACCESS_TOKEN: bufferAccessToken,
+            BUFFER_PROFILE_ID: bufferProfileId,
+            R2_ACCOUNT_ID: r2AccountId,
+            R2_ACCESS_KEY_ID: r2AccessKeyId,
+            R2_SECRET_ACCESS_KEY: r2SecretAccessKey,
+            R2_BUCKET_NAME: r2BucketName,
+            R2_PUBLIC_URL: r2PublicUrl,
         };
-
-        const promises = [
-            saveConfig('RAINDROPIO_CLIENT_ID', raindropClientId),
-            saveConfig('RAINDROPIO_CLIENT_SECRET', raindropClientSecret),
-            saveConfig('VENICE_API_KEY', veniceApiKey),
-            saveConfig('BUFFER_ACCESS_TOKEN', bufferAccessToken),
-            saveConfig('BUFFER_PROFILE_ID', bufferProfileId),
-            saveConfig('R2_ACCOUNT_ID', r2AccountId),
-            saveConfig('R2_ACCESS_KEY_ID', r2AccessKeyId),
-            saveConfig('R2_SECRET_ACCESS_KEY', r2SecretAccessKey),
-            saveConfig('R2_BUCKET_NAME', r2BucketName),
-            saveConfig('R2_PUBLIC_URL', r2PublicUrl),
-        ];
+        const promises = Object.entries(secretConfig).map(([key, value]) => saveConfig(key, value));
 
         // User workflow preferences — always overwrite (empty string is valid)
         if (typeof selectedTag === 'string') promises.push(setSetting('SELECTED_TAG', selectedTag));

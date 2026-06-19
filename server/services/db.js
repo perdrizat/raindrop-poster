@@ -43,35 +43,36 @@ export const getDb = (dbPath = null) => {
     return dbInstance;
 };
 
-// Promise-wrapped wrapper for sqlite3 run
-export const setSetting = (key, value) => {
-    return new Promise((resolve, reject) => {
-        const db = getDb();
-        db.run(
-            `INSERT INTO Settings (key, value) VALUES (?, ?) 
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-            [key, value],
-            function (err) {
-                if (err) reject(err);
-                else resolve(this);
-            }
-        );
+// Promise wrappers around sqlite3's callback API. `run` keeps the classic
+// `function` callback so `this` (lastID/changes) is preserved for callers.
+const run = (sql, params = []) =>
+    new Promise((resolve, reject) => {
+        getDb().run(sql, params, function (err) {
+            if (err) reject(err);
+            else resolve(this);
+        });
     });
-};
 
-// Promise-wrapped wrapper for sqlite3 get
-export const getSetting = (key) => {
-    return new Promise((resolve, reject) => {
-        const db = getDb();
-        db.get(
-            `SELECT value FROM Settings WHERE key = ?`,
-            [key],
-            (err, row) => {
-                if (err) reject(err);
-                else resolve(row ? row.value : null);
-            }
-        );
+const get = (sql, params = []) =>
+    new Promise((resolve, reject) => {
+        getDb().get(sql, params, (err, row) => (err ? reject(err) : resolve(row)));
     });
+
+const all = (sql, params = []) =>
+    new Promise((resolve, reject) => {
+        getDb().all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
+    });
+
+export const setSetting = (key, value) =>
+    run(
+        `INSERT INTO Settings (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        [key, value]
+    );
+
+export const getSetting = async (key) => {
+    const row = await get(`SELECT value FROM Settings WHERE key = ?`, [key]);
+    return row ? row.value : null;
 };
 
 // Config lookup with a single precedence rule: environment variable wins,
@@ -83,47 +84,18 @@ export const getConfig = async (key) => {
 
 // --- post_images helpers ---
 
-export const trackPostImage = (postId, r2Key, channelId) => {
-    return new Promise((resolve, reject) => {
-        const db = getDb();
-        db.run(
-            `INSERT INTO post_images (post_id, r2_key, channel_id) VALUES (?, ?, ?)`,
-            [postId, r2Key, channelId],
-            function (err) {
-                if (err) reject(err);
-                else resolve(this);
-            }
-        );
-    });
-};
+export const trackPostImage = (postId, r2Key, channelId) =>
+    run(`INSERT INTO post_images (post_id, r2_key, channel_id) VALUES (?, ?, ?)`, [
+        postId,
+        r2Key,
+        channelId,
+    ]);
 
-export const getUncleanedImages = () => {
-    return new Promise((resolve, reject) => {
-        const db = getDb();
-        db.all(
-            `SELECT * FROM post_images ORDER BY created_at ASC`,
-            [],
-            (err, rows) => {
-                if (err) reject(err);
-                else resolve(rows || []);
-            }
-        );
-    });
-};
+export const getUncleanedImages = () =>
+    all(`SELECT * FROM post_images ORDER BY created_at ASC`);
 
-export const removePostImage = (postId) => {
-    return new Promise((resolve, reject) => {
-        const db = getDb();
-        db.run(
-            `DELETE FROM post_images WHERE post_id = ?`,
-            [postId],
-            function (err) {
-                if (err) reject(err);
-                else resolve(this);
-            }
-        );
-    });
-};
+export const removePostImage = (postId) =>
+    run(`DELETE FROM post_images WHERE post_id = ?`, [postId]);
 
 export const closeDb = () => {
     return new Promise((resolve, reject) => {

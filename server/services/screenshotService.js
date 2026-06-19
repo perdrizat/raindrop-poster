@@ -1,6 +1,8 @@
 import { acquireBrowser, releaseBrowser } from './scraperService.js';
 import { findQuoteInDOM } from './highlighter.js';
 
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
  * Wraps article HTML in a styled shell for local rendering.
  */
@@ -198,12 +200,12 @@ export const captureQuoteScreenshot = async (articleHtml, articleUrl, quoteText,
 
             if (process.env.NODE_ENV !== 'test') {
                 await page.setViewport({ width: 390, height: 900, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                await delay(2000);
                 await dismissPopups(page);
-                await new Promise(resolve => setTimeout(resolve, 6000));
+                await delay(6000);
                 await dismissPopups(page);
                 await page.setViewport({ width: 390, height: 8000, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await delay(500);
             }
 
             findResult = await page.evaluate(findQuoteInDOM, quoteText);
@@ -239,7 +241,7 @@ export const captureQuoteScreenshot = async (articleHtml, articleUrl, quoteText,
                         console.warn(`[screenshot] Quote not found — retrying via ${fallback.name}`);
                         await page.goto(fallback.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
                         if (process.env.NODE_ENV !== 'test') {
-                            await new Promise(resolve => setTimeout(resolve, 5000));
+                            await delay(5000);
                             await dismissPopups(page);
                             await hideArchiveToolbars(page);
                         }

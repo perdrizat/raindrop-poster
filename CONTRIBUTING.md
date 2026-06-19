@@ -12,6 +12,16 @@ pnpm dev
 
 Vite proxies `/api` requests to the Express backend automatically.
 
+**Node is pinned via `.node-version` (`24.15.0`) — run `fnm use` after cloning.** This file is the single source of truth: CI reads it (`node-version-file`), so a routine Node bump touches only this file. The lockfile pins packages but not the runtime, so Node must be pinned separately.
+
+This is not cosmetic. **Node 24.16.0 and 24.17.0 have a regression ([nodejs/node#63487](https://github.com/nodejs/node/issues/63487)) where `extract-zip` stalls on large deflated entries**, so puppeteer's Chrome install silently extracts no browser binary — only `chrome-headless-shell`/small files land, the `chrome` executable is missing, and the install "succeeds" (the inflate promise never settles → "unsettled top-level await" → Node exits 0 mid-extract). It bites **only at browser-install/extraction time** (the puppeteer postinstall during `pnpm install`, or `pnpm exec puppeteer browsers install chrome`); a Chrome extracted under a good Node runs fine on any Node afterward. Pin to **≤24.15.0**; **unpin when #63487 is fixed** (no fixed 24.x exists yet — 24.16/24.17 are both affected). Docker is immune (builder is `node:22-slim`; runtime uses the puppeteer image's bundled Chrome).
+
+`engines.node` (`>=22.13.0 <24.16.0`) + `engine-strict=true` (`.npmrc`) is a **warning tripwire, not a hard gate**: pnpm only *warns* (`Unsupported engine: wanted <24.16.0, current 24.17.0`) on the project's own `engines` — it does **not** abort the install (verified on pnpm 11.8). So it flags the buggy 24.16/24.17 visibly, but won't stop anyone. What actually keeps you safe is **Node selection**: `.node-version` (read by fnm and CI's `node-version-file`) plus **`fnm default 24.15.0`** on each devbox, so even non-interactive shells (scripts, `ssh host cmd`, tool shells) land on the good Node. When #63487 is fixed, bump `.node-version` and widen the `engines` upper bound together.
+
+For a **hard, repo-tracked guarantee** (zero per-developer shell setup), add `use-node-version=24.15.0` to `.npmrc`: pnpm then runs every pnpm-invoked Node — the puppeteer postinstall *and* `pnpm exec puppeteer browsers install chrome` — under 24.15.0 regardless of the shell's Node, and it's Docker-safe (`.npmrc` isn't copied into the image). Not enabled here by default; it costs a second copy of the version string.
+
+**Local Chrome (e2e / screenshots only):** the bundled Chrome needs system libraries absent on a bare Linux/WSL box. If you'll run `pnpm test:e2e` or exercise the screenshot feature outside Docker, install them once: `sudo apt-get install -y libnss3 libasound2t64` (on pre-24.04 distros the package is `libasound2` — `libasound2` is a virtual package on 24.04+ and will fail the atomic `apt-get`). Not needed for `pnpm install`, `pnpm dev`, or unit tests; Docker/production already includes them. If launch still fails, the e2e preflight runs `ldd` and names the missing libs; `dpkg -S <lib>` on a working host shows the owning package.
+
 ### Package management (pnpm-only)
 
 `pnpm-workspace.yaml` defines the workspace (`client`, `server`) and two supply-chain protections:
@@ -45,6 +55,8 @@ pnpm audit                                          # Dependency advisories — 
 
 **E2E screenshot suite** (`server/services/screenshot-e2e.test.js`) — the screenshot test: 12 curated problem URLs through the real scrape → capture pipeline, asserting a plausible PNG and saving timestamped images to `server/scripts/screenshots/`. Add a `TEST_CASES` entry for every URL that ever fails in production. Not run in CI (needs network + browsers) — run it locally.
 
+> **A `beforeAll` preflight requires Chrome to actually launch.** If it can't, the suite aborts in ~1s with the exact cause — a missing binary (Node 24.16/24.17 mis-extract, see Build & Run + [#63487](https://github.com/nodejs/node/issues/63487)) or missing system libs (it runs `ldd` and lists them, e.g. `libnss3`/`libasound2t64`) — and prints the fix. The preflight exists because without it a missing/unlaunchable Chrome produces 12 × 30s `ResourceRequest timed out` failures **and a `/tmp` profile storm**: the `min:1` pool (`scraperService.js`) retries `launch()` with no backoff, leaking a `puppeteer_dev_profile-*` dir per attempt until tmpfs runs out of inodes. This is the only place the host Node/libs gaps surface locally — ordinary app use never re-extracts Chrome, and the deployed container bundles both, so neither is affected. Fix per the preflight's message: reinstall Chrome under a pinned Node (`rm -rf ~/.cache/puppeteer && fnm exec --using=24.15.0 pnpm -C server exec puppeteer browsers install chrome`), and/or `apt-get install` the libs it lists.
+
 **CI** (`.github/workflows/ci.yml`) — lint + unit tests + dependency audit on every push/PR. E2E excluded by design.
 
 ### Required after screenshot pipeline changes
@@ -71,7 +83,7 @@ pnpm deploy:remote                                  # Stream both tags to TrueNA
 - **Git tag tracks the deployed code:** tag the final commit of a version `v<semver>` and move it on same-day follow-ups (`git tag -f v1.1.0 && git push --force origin v1.1.0`), so the tag always marks the commit the shipped image was built from. Note `pnpm version` only auto-tags on a clean tree — verify with `git tag -l` after a release.
 - CHANGELOG headings carry the released version with the date: `## [1.1.0] - 2026-06-12`.
 
-Multi-stage Dockerfile: Stage 1 builds the Vite client, Stage 2 runs Express + Puppeteer on `ghcr.io/puppeteer/puppeteer:latest`. SQLite data persists in a Docker volume (`raindrop-data` mounted at `/app/data`).
+Multi-stage Dockerfile: Stage 1 builds the Vite client, Stage 2 runs Express + Puppeteer on `ghcr.io/puppeteer/puppeteer:24.43.1` — pinned to the project's puppeteer version so the image's bundled Chrome is exactly the build the app launches (avoid `:latest`, which drifts a newer Chrome and breaks the browser resolution). The app uses that bundled browser (`PUPPETEER_CACHE_DIR=/home/pptruser/.cache/puppeteer`) rather than re-downloading. Bump this tag together with the `puppeteer` dependency. SQLite data persists in a Docker volume (`raindrop-data` mounted at `/app/data`).
 
 **Security model (deliberate decision, 2026-06-12):** the app has no authentication by design — access control is the deployment's responsibility (trusted LAN / VPN / authenticating reverse proxy; see "Security Model" in README.md). Don't add ad-hoc auth to individual routes; if app-level auth is ever needed, it should be one session-gated middleware on `/api/*`.
 

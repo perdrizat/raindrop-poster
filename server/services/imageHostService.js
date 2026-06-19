@@ -20,10 +20,12 @@ async function getR2Config() {
 }
 
 /**
- * Creates an S3-compatible client for Cloudflare R2.
+ * Resolves R2 config and an S3-compatible client for it. Not cached: credentials
+ * can change at runtime via Settings, so every operation reads the current config.
  */
-function createR2Client(config) {
-    return new S3Client({
+async function getR2() {
+    const config = await getR2Config();
+    const client = new S3Client({
         region: 'auto',
         endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
         credentials: {
@@ -31,6 +33,7 @@ function createR2Client(config) {
             secretAccessKey: config.secretAccessKey,
         },
     });
+    return { config, client };
 }
 
 /**
@@ -39,8 +42,7 @@ function createR2Client(config) {
  * @returns {Promise<{url: string, key: string}>} The public URL and R2 object key
  */
 export const uploadImage = async (pngBuffer) => {
-    const config = await getR2Config();
-    const client = createR2Client(config);
+    const { config, client } = await getR2();
 
     const key = `screenshots/${crypto.randomUUID()}.png`;
 
@@ -69,8 +71,7 @@ export const uploadImage = async (pngBuffer) => {
  * @param {string} key - The R2 object key to delete
  */
 export const deleteImage = async (key) => {
-    const config = await getR2Config();
-    const client = createR2Client(config);
+    const { config, client } = await getR2();
 
     console.log(`R2 → DELETE ${key}`);
     await client.send(new DeleteObjectCommand({
@@ -85,8 +86,7 @@ export const deleteImage = async (key) => {
  * @returns {Promise<{success: boolean, message: string}>}
  */
 export const testConnection = async () => {
-    const config = await getR2Config();
-    const client = createR2Client(config);
+    const { config, client } = await getR2();
 
     const response = await client.send(new ListObjectsV2Command({
         Bucket: config.bucket,

@@ -16,14 +16,10 @@ const ThemeToggle = () => {
     }, [isDark]);
 
     const toggleTheme = () => {
-        setIsDark(!isDark);
-        if (!isDark) {
-            document.documentElement.classList.add('dark');
-            localStorage.setItem('theme', 'dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-            localStorage.setItem('theme', 'light');
-        }
+        const next = !isDark;
+        setIsDark(next);
+        // The effect above applies the DOM class; only persistence lives here.
+        localStorage.setItem('theme', next ? 'dark' : 'light');
     };
 
     return (

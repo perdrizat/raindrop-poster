@@ -17,8 +17,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # pnpm 11 requires Node >= 22.13 (node:sqlite builtin)
-          node-version: 22
+          # Single source of truth — keeps CI on the same Node as devs. Bump .node-version only.
+          node-version-file: .node-version
           cache: pnpm
 
       - name: Install dependencies

@@ -3,6 +3,7 @@ import { fetchTaggedItems, updateBookmarkTags } from '../services/raindropioServ
 import { generateProposals } from '../services/aiService';
 import { publishPost } from '../services/publishService';
 import { loadSettings } from '../services/settingsService';
+import { getSystemStatus } from '../services/systemService';
 import BookmarkNav from '../components/BookmarkNav';
 import PublishOverlay from '../components/PublishOverlay';
 import { resizeImage } from '../utils/imageUtils';
@@ -318,8 +319,7 @@ const PostPage = ({ selectedTag }) => {
     }, [selectedTag, loadArticles]);
 
     useEffect(() => {
-        fetch('/api/system/status')
-            .then(r => r.ok ? r.json() : null)
+        getSystemStatus()
             .then(status => {
                 if (status?.bufferChannels?.length) setBufferChannels(status.bufferChannels);
             })
@@ -505,6 +505,7 @@ const PostPage = ({ selectedTag }) => {
     const maxAllowedPostLen = computeMaxPostLen(bufferChannelObjects, !!currentArticle?.link);
     const hasOverage = maxAllowedPostLen !== null && postContent.length > maxAllowedPostLen;
     const hasCharLimitViolation = charWarnings.length > 0 || hasOverage;
+    const publishDisabled = isPublishing || isSelectedImageLoading || hasCharLimitViolation || !postContent.trim();
 
     const insertEmoji = (emoji) => {
         const editor = postTextareaRef.current;
@@ -773,28 +774,28 @@ const PostPage = ({ selectedTag }) => {
                         <div className="flex flex-wrap items-center gap-2">
                             <button
                                 onClick={() => handlePublish('now')}
-                                disabled={isPublishing || isSelectedImageLoading || hasCharLimitViolation || !postContent.trim()}
+                                disabled={publishDisabled}
                                 className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-transparent text-sm font-medium text-white shadow-sm bg-red-600 hover:bg-red-700 disabled:opacity-70 disabled:cursor-not-allowed"
                             >
                                 Now
                             </button>
                             <button
                                 onClick={() => handlePublish('prioritize')}
-                                disabled={isPublishing || isSelectedImageLoading || hasCharLimitViolation || !postContent.trim()}
+                                disabled={publishDisabled}
                                 className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-transparent text-sm font-medium text-white shadow-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-70 disabled:cursor-not-allowed"
                             >
                                 Prioritize
                             </button>
                             <button
                                 onClick={() => handlePublish('next')}
-                                disabled={isPublishing || isSelectedImageLoading || hasCharLimitViolation || !postContent.trim()}
+                                disabled={publishDisabled}
                                 className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-70 disabled:cursor-not-allowed"
                             >
                                 Next Available
                             </button>
                             <button
                                 onClick={() => handlePublish('draft')}
-                                disabled={isPublishing || isSelectedImageLoading || hasCharLimitViolation || !postContent.trim()}
+                                disabled={publishDisabled}
                                 className="inline-flex items-center justify-center rounded-md px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-70 disabled:cursor-not-allowed"
                             >
                                 Drafts

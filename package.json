@@ -17,6 +17,9 @@
   "author": "",
   "license": "ISC",
   "description": "",
+  "engines": {
+    "node": ">=22.13.0 <24.16.0"
+  },
   "devDependencies": {
     "concurrently": "^9.2.1"
   }

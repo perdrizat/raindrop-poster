@@ -1,4 +1,6 @@
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll, beforeAll } from 'vitest';
+import puppeteer from 'puppeteer';
+import { execSync } from 'node:child_process';
 import { captureQuoteScreenshot } from './screenshotService.js';
 import { scrapeArticle, shutdownPool } from './scraperService.js';
 import fs from 'fs';
@@ -115,7 +117,51 @@ const timestamp = () => {
     return `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}`;
 };
 
+// Turns a Chrome-launch failure into an actionable message. The two real causes
+// on a fresh box: a missing binary (Node 24.16/24.17 silently mis-extract it —
+// nodejs/node#63487) or missing system libraries (ldd enumerates those precisely).
+function diagnoseBrowserLaunch(err) {
+    const original = (err?.message || String(err)).split('\n')[0];
+    let exe = '(unresolved)';
+    try { exe = puppeteer.executablePath(); } catch { /* not resolvable */ }
+    const installed = exe !== '(unresolved)' && fs.existsSync(exe);
+    const out = [
+        'E2E preflight: Chrome failed to launch — fix this before the suite can run.',
+        `  executablePath: ${exe}`,
+    ];
+    if (!installed) {
+        out.push(
+            '  Chrome is not installed. Install under a pinned Node (<=24.15.0; 24.16/24.17 silently mis-extract — nodejs/node#63487):',
+            '    rm -rf ~/.cache/puppeteer && pnpm -C server exec puppeteer browsers install chrome',
+        );
+    } else {
+        out.push('  Chrome is installed but cannot launch — usually missing system libraries.');
+        try {
+            const ldd = execSync(`ldd "${exe}"`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+            const missing = ldd.split('\n').filter((l) => l.includes('not found')).map((l) => l.trim());
+            if (missing.length) out.push('  Missing libraries:', ...missing.map((l) => `    ${l}`));
+        } catch { /* ldd unavailable (non-Linux) */ }
+        out.push('  Install (Debian/Ubuntu): sudo apt-get install -y libnss3 libasound2   (libasound2t64 on Ubuntu 24.04+)');
+    }
+    out.push(`  Original error: ${original}`);
+    out.push('  See CONTRIBUTING.md -> Build & Run (local Chrome / e2e).');
+    return out.join('\n');
+}
+
 describe('Screenshot E2E Integration', () => {
+    // Preflight: one fast launch so a missing browser/libs fails here with guidance,
+    // instead of 12 x 30s pool-acquire timeouts (and a /tmp profile storm).
+    beforeAll(async () => {
+        let browser;
+        try {
+            browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+        } catch (err) {
+            throw new Error(diagnoseBrowserLaunch(err));
+        } finally {
+            await browser?.close().catch(() => {});
+        }
+    }, 60000);
+
     afterAll(async () => {
         await shutdownPool();
     });
