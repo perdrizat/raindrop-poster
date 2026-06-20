@@ -89,7 +89,7 @@ export const scrapeArticle = async (url) => {
             return { markdown: data.text || '', html: '' };
         } catch (error) {
             console.error('vxtwitter fallback error:', error.message);
-            throw new Error('Failed to scrape the article.');
+            throw new Error('Failed to scrape the article.', { cause: error });
         }
     }
 
@@ -138,7 +138,7 @@ export const scrapeArticle = async (url) => {
         return { markdown: cleanText.substring(0, 50000), html: '' };
     } catch (error) {
         console.error('Scraping error:', error.message);
-        throw new Error('Failed to scrape the article.');
+        throw new Error('Failed to scrape the article.', { cause: error });
     } finally {
         if (page) await page.close().catch(() => {});
         releaseBrowser(browser);

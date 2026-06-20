@@ -25,7 +25,7 @@ RUN pnpm -C client build
 # Pin to the project's puppeteer version (server/package.json) so the Chrome the
 # base image ships matches what the app launches. `:latest` floats and drifted a
 # newer Chrome across devboxes, breaking `puppeteer browsers install chrome`.
-FROM ghcr.io/puppeteer/puppeteer:24.43.1
+FROM ghcr.io/puppeteer/puppeteer:25.1.0
 
 # We need to run as root to bind to port 80
 USER root

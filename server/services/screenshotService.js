@@ -315,7 +315,7 @@ export const captureQuoteScreenshot = async (articleHtml, articleUrl, quoteText,
         return screenshotBuffer;
     } catch (error) {
         console.error('Screenshot error:', error.stack);
-        throw new Error('Failed to capture screenshot');
+        throw new Error('Failed to capture screenshot', { cause: error });
     } finally {
         if (page) await page.close().catch(() => {});
         releaseBrowser(browser);

@@ -62,7 +62,7 @@ export const uploadImage = async (pngBuffer) => {
         return { url, key };
     } catch (error) {
         console.error('R2 upload error:', error.message);
-        throw new Error('Failed to upload image');
+        throw new Error('Failed to upload image', { cause: error });
     }
 };
 

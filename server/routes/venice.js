@@ -147,7 +147,7 @@ ${articleText}
             } catch (e) {
                 const jsonMatch = rawContent.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
                 if (jsonMatch) return JSON.parse(jsonMatch[1]);
-                throw new Error("Failed to parse LLM response into JSON: " + rawContent);
+                throw new Error("Failed to parse LLM response into JSON: " + rawContent, { cause: e });
             }
         };
 

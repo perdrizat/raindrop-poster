@@ -156,7 +156,7 @@ describe('Screenshot E2E Integration', () => {
         try {
             browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
         } catch (err) {
-            throw new Error(diagnoseBrowserLaunch(err));
+            throw new Error(diagnoseBrowserLaunch(err), { cause: err });
         } finally {
             await browser?.close().catch(() => {});
         }
