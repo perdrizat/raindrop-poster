@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-20
+
 ### Changed
 - Update all dependencies to latest stable (Node excepted): puppeteer 24→25 (Docker base image → `ghcr.io/puppeteer/puppeteer:25.1.0`), vite 7→8, `@vitejs/plugin-react` 5→6, eslint/`@eslint/js` 9→10, jsdom 28→29, concurrently 9→10, globals 16→17, plus `@aws-sdk/client-s3` and `@types/react` patches. Held back: Tailwind (v4 is a separate CSS-first migration) and sqlite3 (6.x's prebuilt binary needs GLIBC_2.38, newer than the puppeteer base image's glibc — stays on 5.x).
 - Chain caught errors with `{ cause }` at 6 server throw sites (satisfies eslint 10's new `preserve-caught-error` rule; thrown messages unchanged).
