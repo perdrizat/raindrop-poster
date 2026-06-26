@@ -1,7 +1,8 @@
 import express from 'express';
-import axios from 'axios';
 import { getConfig, trackPostImage } from '../services/db.js';
 import { uploadImage } from '../services/imageHostService.js';
+import { bufferGraphql, CHANNELS_QUERY } from '../services/bufferService.js';
+import { CHAR_LIMITS, SHORTENED_URL_LEN, URL_SHORTENED_SERVICES } from '../../shared/platformLimits.js';
 
 const router = express.Router();
 
@@ -27,24 +28,14 @@ router.post('/', async (req, res) => {
         }
 
         // Fetch channel metadata to enforce per-platform character limits before posting.
-        // Limits mirror the client (PostPage) exactly: total budget per platform, with the
-        // article URL weighted at a fixed 23 chars for services that shorten URLs
-        // (Bluesky facets, Twitter t.co, Mastodon API). Threads counts the full text.
-        const CHAR_LIMITS = { bluesky: 300, twitter: 280, mastodon: 500, threads: 500 };
-        const SHORTENED_URL_LEN = 23;
-        const URL_SHORTENED_SERVICES = new Set(['bluesky', 'twitter', 'mastodon']);
-        const channelsQuery = `
-            query GetChannels($input: ChannelsInput!) {
-                channels(input: $input) { id, service }
-            }
-        `;
-        const channelsRes = await axios.post('https://api.buffer.com/1/graphql', {
-            query: channelsQuery,
-            variables: { input: { organizationId: bufferProfileId } }
-        }, {
-            headers: { 'Authorization': `Bearer ${bufferAccessToken}`, 'Content-Type': 'application/json' }
+        // Limits mirror the client (PostPage) exactly via shared/platformLimits.js: total
+        // budget per platform, with the article URL weighted at a fixed 23 chars for
+        // services that shorten URLs. Threads counts the full text.
+        const urlShortenedServices = new Set(URL_SHORTENED_SERVICES);
+        const channelsData = await bufferGraphql(bufferAccessToken, CHANNELS_QUERY, {
+            input: { organizationId: bufferProfileId }
         });
-        const allChannels = channelsRes.data?.data?.channels || [];
+        const allChannels = channelsData?.data?.channels || [];
         const channelServiceMap = Object.fromEntries(allChannels.map(ch => [ch.id, ch.service]));
 
         // Pre-validate effective text length against all target channels
@@ -53,7 +44,7 @@ router.post('/', async (req, res) => {
             const service = channelServiceMap[channelId];
             if (!service || !CHAR_LIMITS[service]) continue;
             let textToCheck = text;
-            if (URL_SHORTENED_SERVICES.has(service) && articleUrl) {
+            if (urlShortenedServices.has(service) && articleUrl) {
                 textToCheck = text.replace(articleUrl, 'x'.repeat(SHORTENED_URL_LEN));
             }
             if (textToCheck.length > CHAR_LIMITS[service]) {
@@ -134,23 +125,15 @@ router.post('/', async (req, res) => {
 
                 console.log(`Buffer API → createPost channel=${channelId} mode=${input.mode} scheduling=${input.schedulingType}${input.saveToDraft ? ' draft=true' : ''}${imageUrl ? ' +image' : ''}`);
 
-                const response = await axios.post('https://api.buffer.com/1/graphql', {
-                    query,
-                    variables: { input }
-                }, {
-                    headers: {
-                        'Authorization': `Bearer ${bufferAccessToken}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
+                const data = await bufferGraphql(bufferAccessToken, query, { input });
 
-                if (response.data.errors) {
-                    console.error(`Buffer API ✗ channel=${channelId}: ${response.data.errors[0].message}`);
-                    errors.push(`Channel ${channelId}: ${response.data.errors[0].message}`);
+                if (data.errors) {
+                    console.error(`Buffer API ✗ channel=${channelId}: ${data.errors[0].message}`);
+                    errors.push(`Channel ${channelId}: ${data.errors[0].message}`);
                     continue;
                 }
 
-                const result = response.data.data?.createPost;
+                const result = data.data?.createPost;
                 if (result?.__typename === 'PostActionSuccess') {
                     console.log(`Buffer API ✓ channel=${channelId} postId=${result.post.id}`);
                     postedIds.push(result.post.id);

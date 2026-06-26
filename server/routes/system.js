@@ -18,23 +18,42 @@ const saveConfig = async (key, value) => {
  * But Raindrop.io is universally required to fetch content.
  */
 const checkMinimumConfig = async () => {
-    const raindropId = await getConfig('RAINDROPIO_CLIENT_ID');
-    const hasRaindropConfig = !!raindropId;
+    // These reads are independent — run them concurrently rather than serially,
+    // since /status is hit on every page load.
+    const [
+        raindropId,
+        veniceKey,
+        bufferToken,
+        r2AccountId,
+        bufferProfileId,
+        selectedTag,
+        postingObjectives,
+        bufferChannelsRaw,
+    ] = await Promise.all([
+        getConfig('RAINDROPIO_CLIENT_ID'),
+        getConfig('VENICE_API_KEY'),
+        getConfig('BUFFER_ACCESS_TOKEN'),
+        getConfig('R2_ACCOUNT_ID'),
+        getConfig('BUFFER_PROFILE_ID'),
+        getSetting('SELECTED_TAG'),
+        getSetting('POSTING_OBJECTIVES'),
+        getSetting('BUFFER_CHANNELS'),
+    ]);
 
-    const bufferChannelsRaw = await getSetting('BUFFER_CHANNELS');
     let bufferChannels = [];
     try { bufferChannels = bufferChannelsRaw ? JSON.parse(bufferChannelsRaw) : []; } catch { /* keep [] */ }
 
+    const hasRaindropConfig = !!raindropId;
     return {
         isConfigured: hasRaindropConfig,
         hasRaindropConfig,
-        hasVeniceConfig: !!(await getConfig('VENICE_API_KEY')),
-        hasBufferConfig: !!(await getConfig('BUFFER_ACCESS_TOKEN')),
-        hasR2Config: !!(await getConfig('R2_ACCOUNT_ID')),
+        hasVeniceConfig: !!veniceKey,
+        hasBufferConfig: !!bufferToken,
+        hasR2Config: !!r2AccountId,
         raindropClientId: raindropId || '',
-        bufferProfileId: await getConfig('BUFFER_PROFILE_ID') || '',
-        selectedTag: await getSetting('SELECTED_TAG') || '',
-        postingObjectives: await getSetting('POSTING_OBJECTIVES') || '',
+        bufferProfileId: bufferProfileId || '',
+        selectedTag: selectedTag || '',
+        postingObjectives: postingObjectives || '',
         bufferChannels,
     };
 };

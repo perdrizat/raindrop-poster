@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PostPage from './PostPage';
 import { fetchTaggedItems, updateBookmarkTags } from '../services/raindropioService';
@@ -1090,6 +1090,78 @@ describe('PostPage — image options panel', () => {
         expect(generateCallBody.prompt).toContain('Article One');
     });
 
+    it('offers a Regenerate control once an AI image exists, re-requesting with the latest context', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        let callCount = 0;
+        let lastBody = null;
+        globalThis.fetch = vi.fn().mockImplementation(async (url, init) => {
+            if (url === '/api/venice/generate-image') {
+                callCount += 1;
+                lastBody = JSON.parse(init.body);
+                return { ok: true, json: async () => ({ imageData: `data:image/png;base64,AID${callCount}` }) };
+            }
+            return { ok: true, json: async () => ({ imageData: null }) };
+        });
+
+        render(<PostPage selectedTag="important" />);
+        await screen.findByLabelText(/quote/i);
+        await switchToImages();
+
+        const aiCard = screen.getByTestId('image-option-ai');
+        // No regenerate control on the AI card before any image exists
+        expect(within(aiCard).queryByRole('button', { name: /regenerate/i })).toBeNull();
+
+        // First generation via the empty AI card
+        await userEvent.click(aiCard);
+        await waitFor(() => expect(callCount).toBe(1));
+
+        // Regenerate control now available; editing context then regenerating
+        // re-requests with the updated scene.
+        const regenBtn = await within(aiCard).findByRole('button', { name: /regenerate/i });
+        const contextInput = screen.getByLabelText(/image context/i);
+        await userEvent.clear(contextInput);
+        await userEvent.type(contextInput, 'a totally new scene');
+        await userEvent.click(regenBtn);
+
+        await waitFor(() => expect(callCount).toBe(2));
+        expect(lastBody.prompt).toContain('a totally new scene');
+        // AI option stays selected after regenerating
+        expect(screen.getByTestId('image-option-ai').className).toMatch(/(ring|border-blue)/);
+    });
+
+    it('keeps the AI Regenerate control reachable — hovering it does not open the enlarged preview', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        let callCount = 0;
+        globalThis.fetch = vi.fn().mockImplementation(async (url) => {
+            if (url === '/api/venice/generate-image') {
+                callCount += 1;
+                return { ok: true, json: async () => ({ imageData: `data:image/png;base64,AID${callCount}` }) };
+            }
+            return { ok: true, json: async () => ({ imageData: null }) };
+        });
+
+        render(<PostPage selectedTag="important" />);
+        await screen.findByLabelText(/quote/i);
+        await switchToImages();
+
+        const aiCard = screen.getByTestId('image-option-ai');
+        await userEvent.click(aiCard);
+        await waitFor(() => expect(callCount).toBe(1));
+        const regenBtn = await within(aiCard).findByRole('button', { name: /regenerate/i });
+
+        // Hovering the control must NOT open the fullscreen preview that would cover it.
+        await userEvent.hover(regenBtn);
+        expect(screen.queryByTestId('image-preview-overlay')).not.toBeInTheDocument();
+
+        // Hovering the image itself still enlarges it (feature preserved).
+        await userEvent.hover(aiCard.querySelector('img'));
+        await screen.findByTestId('image-preview-overlay');
+
+        // The control is still clickable to regenerate.
+        await userEvent.click(regenBtn);
+        await waitFor(() => expect(callCount).toBe(2));
+    });
+
     it('selects an image option when clicked (if image exists)', async () => {
         const articlesWithCover = [{ ...mockArticles[0], cover: 'https://img.com/cover.jpg' }];
         fetchTaggedItems.mockResolvedValueOnce(articlesWithCover);
@@ -1111,7 +1183,7 @@ describe('PostPage — image options panel', () => {
         expect(screen.queryByTestId('image-preview-overlay')).not.toBeInTheDocument();
 
         const coverCard = screen.getByTestId('image-option-cover');
-        await userEvent.hover(coverCard);
+        await userEvent.hover(coverCard.querySelector('img'));
 
         const overlay = await screen.findByTestId('image-preview-overlay');
         const img = overlay.querySelector('img');
@@ -1129,12 +1201,12 @@ describe('PostPage — image options panel', () => {
             expect(card.querySelector('img')).toBeTruthy();
         });
 
-        await userEvent.hover(screen.getByTestId('image-option-cover'));
+        await userEvent.hover(screen.getByTestId('image-option-cover').querySelector('img'));
         let overlay = await screen.findByTestId('image-preview-overlay');
         expect(overlay.querySelector('img').getAttribute('src')).toBe('https://img.com/cover.jpg');
 
         // Move hover directly to screenshot card — overlay should update, not disappear
-        await userEvent.hover(screen.getByTestId('image-option-screenshot'));
+        await userEvent.hover(screen.getByTestId('image-option-screenshot').querySelector('img'));
         overlay = screen.getByTestId('image-preview-overlay');
         expect(overlay.querySelector('img').getAttribute('src')).toContain('SCREENSHOTDATA');
     });
@@ -1145,11 +1217,11 @@ describe('PostPage — image options panel', () => {
         render(<PostPage selectedTag="important" />);
         await switchToImages();
 
-        const coverCard = screen.getByTestId('image-option-cover');
-        await userEvent.hover(coverCard);
+        const coverImg = screen.getByTestId('image-option-cover').querySelector('img');
+        await userEvent.hover(coverImg);
         await screen.findByTestId('image-preview-overlay');
 
-        await userEvent.unhover(coverCard);
+        await userEvent.unhover(coverImg);
         await waitFor(() => expect(screen.queryByTestId('image-preview-overlay')).not.toBeInTheDocument());
     });
 
@@ -1159,7 +1231,7 @@ describe('PostPage — image options panel', () => {
         render(<PostPage selectedTag="important" />);
         await switchToImages();
 
-        await userEvent.hover(screen.getByTestId('image-option-cover'));
+        await userEvent.hover(screen.getByTestId('image-option-cover').querySelector('img'));
         const overlay = await screen.findByTestId('image-preview-overlay');
         expect(overlay.className).toMatch(/pointer-events-none/);
     });

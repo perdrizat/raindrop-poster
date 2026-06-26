@@ -7,6 +7,7 @@ import { getSystemStatus } from '../services/systemService';
 import BookmarkNav from '../components/BookmarkNav';
 import PublishOverlay from '../components/PublishOverlay';
 import { resizeImage } from '../utils/imageUtils';
+import { CHAR_LIMITS, SHORTENED_URL_LEN } from '../../../shared/platformLimits.js';
 
 const parseHashIndex = () => {
     const raw = typeof window !== 'undefined' ? window.location.hash.replace(/^#/, '') : '';
@@ -15,8 +16,7 @@ const parseHashIndex = () => {
 };
 
 // Char limits per Buffer service; URLs cost a fixed 23 chars plus the "\n\n" separator.
-const CHAR_LIMITS = { bluesky: 300, mastodon: 500, twitter: 280, threads: 500 };
-const SHORTENED_URL_LEN = 23;
+// CHAR_LIMITS / SHORTENED_URL_LEN are shared with the server (see shared/platformLimits.js).
 
 // Max post-text length permitted by the strictest configured channel. Falls back to
 // the strictest known limit when no channel has a known service, so the budget is
@@ -164,7 +164,7 @@ const HighlightedPostEditor = forwardRef(({ id, value, onChange, maxAllowedLen, 
 });
 
 
-const ImageCard = ({ id, label, imageSrc, isLoading, error, onRetry, onActivate, disabled, placeholder, selectedOption, onSelect, onHover }) => {
+const ImageCard = ({ id, label, imageSrc, isLoading, error, onRetry, onRegenerate, onActivate, disabled, placeholder, selectedOption, onSelect, onHover }) => {
     const isSelected = selectedOption === id;
     const canSelect = !!imageSrc || id === 'cover';
     const handleClick = () => {
@@ -185,8 +185,6 @@ const ImageCard = ({ id, label, imageSrc, isLoading, error, onRetry, onActivate,
         <div
             data-testid={`image-option-${id}`}
             onClick={handleClick}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
             className={`relative aspect-square rounded-lg border-2 overflow-hidden flex flex-col cursor-pointer transition-all duration-200
                 ${isSelected ? 'ring-2 ring-blue-500 border-blue-500' : 'border-gray-200 dark:border-gray-700'}
                 ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-blue-300 dark:hover:border-blue-600'}
@@ -199,8 +197,17 @@ const ImageCard = ({ id, label, imageSrc, isLoading, error, onRetry, onActivate,
                         Retry
                     </button>
                 )}
+                {onRegenerate && imageSrc && !isLoading && !error && (
+                    <button onClick={(e) => { e.stopPropagation(); onRegenerate(); }} className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700">
+                        Regenerate
+                    </button>
+                )}
             </div>
-            <div className="flex-1 flex items-center justify-center p-2 min-h-0">
+            <div
+                className="flex-1 flex items-center justify-center p-2 min-h-0"
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
+            >
                 {isLoading ? (
                     <div className="flex items-center gap-2 text-gray-400">
                         <svg className="animate-spin h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24">
@@ -960,6 +967,7 @@ const PostPage = ({ selectedTag }) => {
                                     isLoading={isGeneratingAi}
                                     error={aiError}
                                     onRetry={generateAiImage}
+                                    onRegenerate={generateAiImage}
                                     onActivate={generateAiImage}
                                     placeholder="Click to generate"
                                     selectedOption={selectedImageOption}

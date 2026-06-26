@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import axios from 'axios';
 import { getSetting, setSetting, getConfig } from '../services/db.js';
 import { testConnection } from '../services/imageHostService.js';
+import { bufferGraphql, CHANNELS_QUERY } from '../services/bufferService.js';
 
 const router = express.Router();
 
@@ -31,11 +32,17 @@ function getFrontendRedirectUrl(req) {
 
 // --- GET CURRENT SESSION STATUS ---
 router.get('/status', async (req, res) => {
+    const [raindropToken, venice, buffer, r2] = await Promise.all([
+        getSetting('RAINDROPIO_ACCESS_TOKEN'),
+        getConfig('VENICE_API_KEY'),
+        getConfig('BUFFER_ACCESS_TOKEN'),
+        getConfig('R2_ACCOUNT_ID'),
+    ]);
     res.json({
-        raindropio: !!(req.session.raindropio || await getSetting('RAINDROPIO_ACCESS_TOKEN')),
-        venice: !!(await getConfig('VENICE_API_KEY')),
-        buffer: !!(await getConfig('BUFFER_ACCESS_TOKEN')),
-        r2: !!(await getConfig('R2_ACCOUNT_ID')),
+        raindropio: !!(req.session.raindropio || raindropToken),
+        venice: !!venice,
+        buffer: !!buffer,
+        r2: !!r2,
     });
 });
 
@@ -49,37 +56,17 @@ router.get('/buffer/test', async (req, res) => {
             return res.status(401).json({ error: 'Not authenticated with Buffer' });
         }
 
-        const query = `
-            query GetChannels($input: ChannelsInput!) {
-                channels(input: $input) {
-                    id
-                    service
-                    name
-                }
-            }
-        `;
-
         console.log('Buffer API → GetChannels');
-        const response = await axios.post('https://api.buffer.com/1/graphql', {
-            query,
-            variables: {
-                input: {
-                    organizationId: profileId
-                }
-            }
-        }, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
+        const data = await bufferGraphql(token, CHANNELS_QUERY, {
+            input: { organizationId: profileId }
         });
 
-        if (response.data.errors) {
-            console.error(`Buffer API ✗ GetChannels: ${response.data.errors[0].message}`);
-            return res.status(502).json({ error: response.data.errors[0].message });
+        if (data.errors) {
+            console.error(`Buffer API ✗ GetChannels: ${data.errors[0].message}`);
+            return res.status(502).json({ error: data.errors[0].message });
         }
 
-        const channels = response.data.data.channels;
+        const channels = data.data.channels;
         const services = [...new Set(channels.map(ch => ch.service))];
         console.log(`Buffer API ✓ ${channels.length} channels on ${services.join(', ')}`);
         res.json({

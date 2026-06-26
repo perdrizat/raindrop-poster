@@ -5,12 +5,21 @@ import { getConfig } from '../services/db.js';
 
 const router = express.Router();
 
+// Resolves the Venice key or sends a 401 and returns null. Callers bail on null:
+//   const apiKey = await requireVeniceKey(res); if (!apiKey) return;
+const requireVeniceKey = async (res) => {
+    const apiKey = await getConfig('VENICE_API_KEY');
+    if (!apiKey) {
+        res.status(401).json({ error: 'System VENICE_API_KEY is not configured' });
+        return null;
+    }
+    return apiKey;
+};
+
 router.get('/test', async (req, res) => {
     try {
-        const apiKey = await getConfig('VENICE_API_KEY');
-        if (!apiKey) {
-            return res.status(401).json({ error: 'System VENICE_API_KEY is not configured' });
-        }
+        const apiKey = await requireVeniceKey(res);
+        if (!apiKey) return;
 
         const response = await axios.get('https://api.venice.ai/api/v1/models', {
             headers: {
@@ -30,10 +39,8 @@ router.get('/test', async (req, res) => {
 
 router.post('/generate', async (req, res) => {
     try {
-        const apiKey = await getConfig('VENICE_API_KEY');
-        if (!apiKey) {
-            return res.status(401).json({ error: 'System VENICE_API_KEY is not configured' });
-        }
+        const apiKey = await requireVeniceKey(res);
+        if (!apiKey) return;
 
         const { articleText, prompt, metadata, charBudget } = req.body;
 
@@ -215,10 +222,8 @@ ${articleText}
 
 router.post('/generate-image', async (req, res) => {
     try {
-        const apiKey = await getConfig('VENICE_API_KEY');
-        if (!apiKey) {
-            return res.status(401).json({ error: 'System VENICE_API_KEY is not configured' });
-        }
+        const apiKey = await requireVeniceKey(res);
+        if (!apiKey) return;
 
         const { prompt } = req.body;
 

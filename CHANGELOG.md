@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.2.1] - [2026-06-26]
+
+### Added
+- Regenerate control on the AI image card — re-request a new AI image after a disliked result, an edited quote/Image Context, or a failed attempt (picks up the latest text at click time).
+
+### Changed
+- Image hover-preview now enlarges only when hovering the image area, not the card's control header — so card actions (AI Regenerate / Retry) are never covered by the preview and stay reachable.
+- Deduplicate platform char limits into `shared/platformLimits.js`, imported by client and server so the two validation paths can't drift (Dockerfile copies `shared/` into both build stages).
+- Extract Buffer GraphQL transport (endpoint, auth headers, `GetChannels` query) into `server/services/bufferService.js`, replacing the copies in `auth.js` and `publish.js`.
+- Parallelize the independent config reads in `/api/system/status` (8) and `/api/auth/status` (4) with `Promise.all`.
+- Collapse the repeated Venice API-key 401 guard in `venice.js` into one `requireVeniceKey` helper.
+
 ## [1.2.0] - 2026-06-20
 
 ### Changed

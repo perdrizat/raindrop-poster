@@ -11,8 +11,9 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY client/package.json ./client/
 RUN pnpm install --filter client --frozen-lockfile
 
-# Copy client source and build
+# Copy client source (+ cross-workspace shared modules it imports) and build
 COPY client/ ./client/
+COPY shared/ ./shared/
 # Add this so it doesn't fail if we have memory limits during build
 ENV NODE_OPTIONS=--max_old_space_size=4096
 # Stamp the build time so the UI can display it. date runs at build time,
@@ -52,8 +53,9 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY server/package.json ./server/
 RUN pnpm install --filter server --prod --frozen-lockfile
 
-# Copy server source
+# Copy server source (+ cross-workspace shared modules it imports)
 COPY server/ ./server/
+COPY shared/ ./shared/
 
 # Copy built client from the builder stage
 COPY --from=builder /app/client/dist ./client/dist
