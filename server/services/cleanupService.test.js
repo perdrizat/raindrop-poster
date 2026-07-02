@@ -60,7 +60,7 @@ describe('cleanupService', () => {
                 { id: 1, post_id: 'post-1', r2_key: 'screenshots/abc.png', channel_id: 'ch1' },
             ]);
             axios.post.mockResolvedValueOnce({
-                data: { data: { post: { id: 'post-1', status: 'sent', sentAt: '2026-03-20T10:00:00Z' } } }
+                data: { data: { p0: { id: 'post-1', status: 'sent', sentAt: '2026-03-20T10:00:00Z' } } }
             });
 
             const result = await runCleanup('mock-token');
@@ -75,7 +75,7 @@ describe('cleanupService', () => {
                 { id: 1, post_id: 'post-1', r2_key: 'screenshots/abc.png', channel_id: 'ch1' },
             ]);
             axios.post.mockResolvedValueOnce({
-                data: { data: { post: { id: 'post-1', status: 'scheduled', sentAt: null } } }
+                data: { data: { p0: { id: 'post-1', status: 'scheduled', sentAt: null } } }
             });
 
             const result = await runCleanup('mock-token');
@@ -85,26 +85,49 @@ describe('cleanupService', () => {
             expect(removePostImage).not.toHaveBeenCalled();
         });
 
-        it('should handle multiple images, cleaning only sent ones', async () => {
+        it('resolves all images in a single batched request, cleaning only sent ones', async () => {
             getUncleanedImages.mockResolvedValueOnce([
                 { id: 1, post_id: 'post-1', r2_key: 'screenshots/a.png', channel_id: 'ch1' },
                 { id: 2, post_id: 'post-2', r2_key: 'screenshots/b.png', channel_id: 'ch2' },
                 { id: 3, post_id: 'post-3', r2_key: 'screenshots/c.png', channel_id: 'ch3' },
             ]);
-            // post-1: sent, post-2: draft, post-3: sent
-            axios.post
-                .mockResolvedValueOnce({ data: { data: { post: { id: 'post-1', status: 'sent' } } } })
-                .mockResolvedValueOnce({ data: { data: { post: { id: 'post-2', status: 'draft' } } } })
-                .mockResolvedValueOnce({ data: { data: { post: { id: 'post-3', status: 'sent' } } } });
+            // One aliased response for all three posts: sent / draft / sent.
+            axios.post.mockResolvedValueOnce({
+                data: { data: {
+                    p0: { id: 'post-1', status: 'sent' },
+                    p1: { id: 'post-2', status: 'draft' },
+                    p2: { id: 'post-3', status: 'sent' },
+                } }
+            });
 
             const result = await runCleanup('mock-token');
 
             expect(result).toEqual({ checked: 3, cleaned: 2 });
             expect(deleteImage).toHaveBeenCalledTimes(2);
             expect(removePostImage).toHaveBeenCalledTimes(2);
+            // The economy fix: one Buffer request for all three images, not three.
+            expect(axios.post).toHaveBeenCalledTimes(1);
         });
 
-        it('should skip and not crash when Buffer API errors for a post', async () => {
+        it('splits into multiple requests when the backlog exceeds the batch size', async () => {
+            getUncleanedImages.mockResolvedValueOnce([
+                { id: 1, post_id: 'post-1', r2_key: 'screenshots/a.png', channel_id: 'ch1' },
+                { id: 2, post_id: 'post-2', r2_key: 'screenshots/b.png', channel_id: 'ch2' },
+                { id: 3, post_id: 'post-3', r2_key: 'screenshots/c.png', channel_id: 'ch3' },
+            ]);
+            axios.post
+                .mockResolvedValueOnce({ data: { data: { p0: { status: 'sent' }, p1: { status: 'draft' } } } })
+                .mockResolvedValueOnce({ data: { data: { p0: { status: 'sent' } } } });
+
+            const result = await runCleanup('mock-token', { batchSize: 2 });
+
+            expect(result).toEqual({ checked: 3, cleaned: 2 });
+            expect(axios.post).toHaveBeenCalledTimes(2);
+            expect(deleteImage).toHaveBeenCalledWith('screenshots/a.png');
+            expect(deleteImage).toHaveBeenCalledWith('screenshots/c.png');
+        });
+
+        it('should skip and not crash when the batched Buffer request errors', async () => {
             getUncleanedImages.mockResolvedValueOnce([
                 { id: 1, post_id: 'post-1', r2_key: 'screenshots/a.png', channel_id: 'ch1' },
             ]);

@@ -24,7 +24,8 @@ router.get('/test', async (req, res) => {
         const response = await axios.get('https://api.venice.ai/api/v1/models', {
             headers: {
                 Authorization: `Bearer ${apiKey}`
-            }
+            },
+            timeout: 15000,
         });
 
         // The exact structure of Venice API response may vary, returning a boolean indicating success
@@ -220,6 +221,39 @@ ${articleText}
     }
 });
 
+// Venice intermittently returns a blank (all-black) image that comes back tiny
+// (~29KB base64) instead of the real >1MB render. Size is a reliable signal:
+// anything under this threshold is treated as a failed render and retried.
+const MIN_VALID_IMAGE_B64_LEN = 100 * 1024;
+const MAX_IMAGE_ATTEMPTS = 5;
+
+const requestVeniceImage = async (apiKey, prompt) => {
+    const startedAt = Date.now();
+    const response = await axios.post('https://api.venice.ai/api/v1/image/generate', {
+        model: 'gpt-image-1-5',
+        prompt,
+        width: 1024,
+        height: 1024,
+        format: 'png',
+        return_binary: false,
+        hide_watermark: true,
+        safe_mode: false,
+    }, {
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+        }
+    });
+    const durationMs = Date.now() - startedAt;
+    const images = response.data?.images;
+    const b64 = Array.isArray(images) ? images[0] : null;
+    // Everything Venice returned except the huge image payload — kept for
+    // diagnosing blanks (timing, request echo, any moderation/violation flags).
+    const meta = { ...response.data };
+    delete meta.images;
+    return { b64, durationMs, meta };
+};
+
 router.post('/generate-image', async (req, res) => {
     try {
         const apiKey = await requireVeniceKey(res);
@@ -233,30 +267,29 @@ router.post('/generate-image', async (req, res) => {
 
         console.log(`[Venice.ai] --> Image generation: "${prompt.slice(0, 80)}..."`);
 
-        const response = await axios.post('https://api.venice.ai/api/v1/image/generate', {
-            model: 'gpt-image-1-5',
-            prompt,
-            width: 1024,
-            height: 1024,
-            format: 'png',
-            return_binary: false,
-            hide_watermark: true,
-            safe_mode: false,
-        }, {
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
+        // The retry loop is a stopgap for an upstream bug (Venice intermittently
+        // returns a blank/black image). The `[Venice.ai][blank]` diagnostics below
+        // exist so we can gather data and root-cause it — do not remove them when
+        // the loop is eventually replaced by a real fix.
+        let blankCount = 0;
+        for (let attempt = 1; attempt <= MAX_IMAGE_ATTEMPTS; attempt++) {
+            const { b64, durationMs, meta } = await requestVeniceImage(apiKey, prompt);
+            if (!b64) {
+                throw new Error('No image data in Venice response');
             }
-        });
-
-        const images = response.data?.images;
-        const b64 = Array.isArray(images) ? images[0] : null;
-        if (!b64) {
-            throw new Error('No image data in Venice response');
+            const bytes = b64.length;
+            const kb = Math.round(bytes / 1024);
+            if (bytes >= MIN_VALID_IMAGE_B64_LEN) {
+                console.log(`[Venice.ai] <-- Image generated (${kb}KB base64, ${durationMs}ms, attempt ${attempt}/${MAX_IMAGE_ATTEMPTS})`);
+                return res.json({ imageData: `data:image/png;base64,${b64}`, attempts: attempt, blankCount });
+            }
+            blankCount++;
+            // Blanks come back tiny and usually very fast; `meta` may carry the reason.
+            console.warn(`[Venice.ai][blank] attempt ${attempt}/${MAX_IMAGE_ATTEMPTS} bytes=${bytes} (${kb}KB) durationMs=${durationMs} meta=${JSON.stringify(meta)}`);
         }
 
-        console.log(`[Venice.ai] <-- Image generated (${Math.round(b64.length / 1024)}KB base64)`);
-        res.json({ imageData: `data:image/png;base64,${b64}` });
+        console.error(`[Venice.ai][blank] gave up after ${MAX_IMAGE_ATTEMPTS} blank images (prompt="${prompt.slice(0, 120)}")`);
+        return res.status(502).json({ error: 'Venice returned only blank images after multiple attempts', blank: true, attempts: MAX_IMAGE_ATTEMPTS });
     } catch (error) {
         console.error('Venice Image Generation Error:', error.response?.data || error.message);
         res.status(502).json({ error: 'Failed to generate image with Venice AI' });

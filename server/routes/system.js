@@ -1,7 +1,15 @@
 import express from 'express';
 import { getSetting, setSetting, getConfig } from '../services/db.js';
+import { getBufferRateLimit } from '../services/bufferService.js';
 
 const router = express.Router();
+
+// Latest Buffer rate-limit snapshot for the client quota banner. Returns the
+// cached headers from the last Buffer call — this makes no Buffer request itself,
+// so it's safe to poll without consuming quota.
+router.get('/buffer-quota', (req, res) => {
+    res.json({ rateLimit: getBufferRateLimit() });
+});
 
 // Persist a config value to SQLite and mirror it into process.env, skipping
 // blanks so a partial form submission never wipes existing credentials.

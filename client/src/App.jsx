@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import SetupPage from './pages/SetupPage'
 import PostPage from './pages/PostPage'
 import ThemeToggle from './components/ThemeToggle'
+import BufferQuotaBanner from './components/BufferQuotaBanner'
 import { loadSettings } from './services/settingsService'
 import { getSystemStatus } from './services/systemService'
 
@@ -56,7 +57,9 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center py-10 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
+    <>
+      <BufferQuotaBanner />
+      <div className="min-h-screen flex flex-col items-center py-10 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
       <header className="w-full max-w-4xl flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
         <div>
           <button onClick={() => setActiveView('publish')} className="text-left focus:outline-none">
@@ -109,7 +112,8 @@ function App() {
           <PostPage selectedTag={settings.selectedTag} />
         )}
       </main>
-    </div>
+      </div>
+    </>
   )
 }
 

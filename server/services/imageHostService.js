@@ -32,6 +32,11 @@ async function getR2() {
             accessKeyId: config.accessKeyId,
             secretAccessKey: config.secretAccessKey,
         },
+        // Bound every R2 call so a stalled connection can't hang a request (which,
+        // under the browser's per-origin connection limit, starves other requests
+        // like provider Test Connections). Without these the SDK can wait far too long.
+        requestHandler: { connectionTimeout: 8000, requestTimeout: 15000 },
+        maxAttempts: 2,
     });
     return { config, client };
 }

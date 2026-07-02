@@ -39,7 +39,7 @@ describe('Venice API Routes', () => {
             expect(res.status).toBe(200);
             expect(res.body).toEqual({ success: true, modelsCount: 2, message: 'Successfully connected to Venice AI' });
             expect(axios.get).toHaveBeenCalledWith('https://api.venice.ai/api/v1/models', {
-                headers: { Authorization: 'Bearer mock-venice-key' }
+                headers: { Authorization: 'Bearer mock-venice-key' }, timeout: 15000
             });
         });
     });
@@ -415,12 +415,17 @@ describe('Venice API Routes', () => {
             expect(res.body.error).toMatch(/prompt.*required/i);
         });
 
+        // A real Venice render is >1MB base64; the route rejects anything under
+        // ~100KB as a blank image, so tests use a comfortably large payload.
+        const REAL_IMAGE_B64 = 'A'.repeat(150 * 1024);
+        const BLANK_IMAGE_B64 = 'A'.repeat(29 * 1024);
+
         it('should return base64 imageData on success', async () => {
             process.env.VENICE_API_KEY = 'mock-key';
 
             axios.post.mockResolvedValueOnce({
                 data: {
-                    images: ['iVBORw0KGgoAAAANSUhEUg==']
+                    images: [REAL_IMAGE_B64]
                 }
             });
 
@@ -429,14 +434,14 @@ describe('Venice API Routes', () => {
             });
 
             expect(res.status).toBe(200);
-            expect(res.body.imageData).toBe('data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==');
+            expect(res.body.imageData).toBe(`data:image/png;base64,${REAL_IMAGE_B64}`);
         });
 
         it('should call Venice image API with correct endpoint and payload', async () => {
             process.env.VENICE_API_KEY = 'mock-key';
 
             axios.post.mockResolvedValueOnce({
-                data: { images: ['abc123'] }
+                data: { images: [REAL_IMAGE_B64] }
             });
 
             await request(app).post('/api/venice/generate-image').send({
@@ -483,6 +488,35 @@ describe('Venice API Routes', () => {
 
             expect(res.status).toBe(502);
             expect(res.body.error).toMatch(/Failed to generate/i);
+        });
+
+        it('retries past blank (too-small) images and returns the first full-size one', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post
+                .mockResolvedValueOnce({ data: { images: [BLANK_IMAGE_B64] } })
+                .mockResolvedValueOnce({ data: { images: [BLANK_IMAGE_B64] } })
+                .mockResolvedValueOnce({ data: { images: [REAL_IMAGE_B64] } });
+
+            const res = await request(app).post('/api/venice/generate-image').send({
+                prompt: 'A pop-art comic panel'
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body.imageData).toBe(`data:image/png;base64,${REAL_IMAGE_B64}`);
+            expect(axios.post).toHaveBeenCalledTimes(3);
+        });
+
+        it('returns 502 when Venice only ever returns blank images', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post.mockResolvedValue({ data: { images: [BLANK_IMAGE_B64] } });
+
+            const res = await request(app).post('/api/venice/generate-image').send({
+                prompt: 'A pop-art comic panel'
+            });
+
+            expect(res.status).toBe(502);
+            expect(res.body.error).toMatch(/blank/i);
+            expect(axios.post).toHaveBeenCalledTimes(5);
         });
     });
 

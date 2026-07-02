@@ -7,7 +7,8 @@ const router = express.Router();
 // Issues a Raindrop API call with a refreshed bearer token, returning response.data.
 const raindropRequest = (req, { method, url, data }) =>
     withTokenRefresh(async (token) => {
-        const options = { headers: { Authorization: `Bearer ${token}` } };
+        // 15s ceiling so a stalled Raindrop call can't hang the request forever.
+        const options = { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 };
         const response = data === undefined
             ? await axios[method](url, options)
             : await axios[method](url, data, options);

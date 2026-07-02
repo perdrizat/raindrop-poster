@@ -11,6 +11,12 @@ export const getSystemStatus = async () => {
     }
 };
 
+export const getBufferQuota = async () => {
+    const response = await fetch(`${API_BASE_URL}/api/system/buffer-quota`);
+    if (!response.ok) throw new Error('Failed to fetch Buffer quota');
+    return await response.json();
+};
+
 export const configureSystem = async (config) => {
     try {
         const response = await fetch(`${API_BASE_URL}/api/system/configure`, {

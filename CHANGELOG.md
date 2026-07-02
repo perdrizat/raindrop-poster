@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-07-02
+
+### Added
+- Buffer API quota banner: a persistent amber bar at the top of the app appears once Buffer usage reaches 80% of its limit, showing calls remaining and the reset time; when fully blocked it leads with the time-to-reset. Server captures Buffer's `x-ratelimit-*` headers on every call and exposes the snapshot at `/api/system/buffer-quota` (polled by the client; consumes no Buffer quota itself).
+
+### Fixed
+- Provider Test Connections (and other page-load requests) could hang forever with nothing in the logs: outbound calls with no timeout stalled server-side and held client connections open, and under the browser's per-origin connection limit that starved unrelated requests (e.g. a Venice test click that never even reached the server). Fixed by adding request timeouts to every outbound path — Buffer (15s/attempt), Raindrop (15s), Venice test (15s), and R2/S3 (8s connect / 15s request, 2 attempts) — plus making `/api/cleanup/trigger` respond immediately and run cleanup in the background, and making the Buffer connectivity smoke-test fail fast (no retry) so it can't hold a connection through several seconds of backoff on page load.
+- Venice sometimes returns a blank (all-black) image, which arrives tiny (~29KB) vs a real >1MB render — the image endpoint now detects the too-small result and retries (up to 5 attempts), returning 502 only if every attempt is blank.
+- Buffer rate-limiting ("Too many requests from this client") during publish no longer fails the post — the Buffer GraphQL transport retries throttled calls (HTTP 429 or a 200 body carrying the message) with exponential backoff, honouring `Retry-After`. Covers both the channel lookup and each per-channel `createPost`.
+
+### Changed
+- Buffer API economy (fewer calls → less throttling): publish reuses the channel→service map already stored at setup (`BUFFER_CHANNELS`) instead of re-querying Buffer every time; the R2 cleanup job now resolves all tracked posts in a single batched (GraphQL-aliased) request per ~50 images instead of one request per image — the main cause of publish-time throttling — and shares the rate-limit backoff.
+- Blank-image diagnostics: the Venice image route logs `[Venice.ai][blank]` lines (attempt, byte size, response time, and Venice's non-image response metadata) to root-cause the upstream blank-image bug; the response now reports `attempts`/`blankCount`, and the UI shows a dismissible floating notice (reminding you to check the logs) when a generation needed retries.
+- Buffer responses now log any rate-limit headers (`[Buffer][ratelimit]`) to determine whether proactive quota/back-off-until warnings are feasible.
+
 ## [1.2.1] - [2026-06-26]
 
 ### Added

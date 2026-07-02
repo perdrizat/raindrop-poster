@@ -1006,6 +1006,27 @@ describe('PostPage — image options panel', () => {
         await waitFor(() => expect(generateCallBody).toBeTruthy());
         // The prompt should include the edited quote
         expect(generateCallBody.prompt).toContain('EDITED QUOTE');
+        // A clean (first-try) generation shows no retry notice
+        expect(screen.queryByTestId('ai-retry-notice')).toBeNull();
+    });
+
+    it('shows a floating notice to check logs when Venice needed blank-image retries', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+        globalThis.fetch = vi.fn().mockImplementation(async (url) => {
+            if (url === '/api/venice/generate-image') {
+                return { ok: true, json: async () => ({ imageData: 'data:image/png;base64,AID', attempts: 3, blankCount: 2 }) };
+            }
+            return { ok: true, json: async () => ({ imageData: null }) };
+        });
+
+        render(<PostPage selectedTag="important" />);
+        await screen.findByLabelText(/quote/i);
+        await switchToImages();
+        await userEvent.click(screen.getByTestId('image-option-ai'));
+
+        const notice = await screen.findByTestId('ai-retry-notice');
+        expect(notice).toHaveTextContent(/2 blank images/i);
+        expect(notice).toHaveTextContent(/logs/i);
     });
 
     it('AI image prompt includes the Venice-provided imageContext as scene context', async () => {

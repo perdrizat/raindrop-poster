@@ -38,18 +38,22 @@ describe('GET /api/cleanup/trigger', () => {
         expect(runCleanup).not.toHaveBeenCalled();
     });
 
-    it('should run cleanup when due and Buffer token is available', async () => {
+    it('responds immediately (fire-and-forget) and runs cleanup in the background', async () => {
         shouldRunCleanup.mockResolvedValueOnce(true);
         process.env.BUFFER_ACCESS_TOKEN = 'mock-token';
-        runCleanup.mockResolvedValueOnce({ checked: 3, cleaned: 2 });
+        // Never-resolving cleanup: if the route awaited it, this request would hang
+        // and the test would time out — proving the endpoint no longer blocks.
+        let resolveCleanup;
+        runCleanup.mockReturnValueOnce(new Promise((resolve) => { resolveCleanup = resolve; }));
 
         const app = express();
         app.use('/api/cleanup', cleanupRoutes);
 
         const res = await request(app).get('/api/cleanup/trigger');
         expect(res.status).toBe(200);
-        expect(res.body.result).toEqual({ checked: 3, cleaned: 2 });
+        expect(res.body).toEqual({ started: true });
         expect(runCleanup).toHaveBeenCalledWith('mock-token');
+        resolveCleanup?.({ checked: 3, cleaned: 2 });
     });
 
     it('should use DB token when env token is not set', async () => {
@@ -78,7 +82,7 @@ describe('GET /api/cleanup/trigger', () => {
         expect(runCleanup).not.toHaveBeenCalled();
     });
 
-    it('should handle cleanup errors gracefully', async () => {
+    it('does not fail the response when background cleanup errors', async () => {
         shouldRunCleanup.mockResolvedValueOnce(true);
         process.env.BUFFER_ACCESS_TOKEN = 'mock-token';
         runCleanup.mockRejectedValueOnce(new Error('Cleanup boom'));
@@ -86,8 +90,9 @@ describe('GET /api/cleanup/trigger', () => {
         const app = express();
         app.use('/api/cleanup', cleanupRoutes);
 
+        // The background failure is logged, not surfaced — the request still succeeds.
         const res = await request(app).get('/api/cleanup/trigger');
-        expect(res.status).toBe(500);
-        expect(res.body.error).toMatch(/cleanup failed/i);
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ started: true });
     });
 });

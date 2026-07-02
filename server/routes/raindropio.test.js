@@ -68,10 +68,10 @@ describe('Raindrop API Routes', () => {
             expect(res.body.user).toBe('Test User');
             expect(res.body.bookmarkCount).toBe(180);
             expect(axios.get).toHaveBeenCalledWith('https://api.raindrop.io/rest/v1/user', {
-                headers: { Authorization: 'Bearer mock-rd-token' }
+                headers: { Authorization: 'Bearer mock-rd-token' }, timeout: 15000
             });
             expect(axios.get).toHaveBeenCalledWith('https://api.raindrop.io/rest/v1/user/stats', {
-                headers: { Authorization: 'Bearer mock-rd-token' }
+                headers: { Authorization: 'Bearer mock-rd-token' }, timeout: 15000
             });
         });
 
@@ -123,7 +123,7 @@ describe('Raindrop API Routes', () => {
                 ]
             });
             expect(axios.get).toHaveBeenCalledWith('https://api.raindrop.io/rest/v1/tags', {
-                headers: { Authorization: 'Bearer mock-rd-token' }
+                headers: { Authorization: 'Bearer mock-rd-token' }, timeout: 15000
             });
         });
     });
@@ -153,7 +153,7 @@ describe('Raindrop API Routes', () => {
                 items: mockItems
             });
             expect(axios.get).toHaveBeenCalledWith('https://api.raindrop.io/rest/v1/raindrops/0?search=[{"key":"tag","val":"to-tweet"}]', {
-                headers: { Authorization: 'Bearer mock-rd-token' }
+                headers: { Authorization: 'Bearer mock-rd-token' }, timeout: 15000
             });
         });
     });
@@ -186,7 +186,7 @@ describe('Raindrop API Routes', () => {
                 item: { _id: 1234, tags: ['new_tag'] }
             });
             expect(axios.put).toHaveBeenCalledWith('https://api.raindrop.io/rest/v1/raindrop/1234', { tags: ['new_tag'] }, {
-                headers: { Authorization: 'Bearer mock-rd-token' }
+                headers: { Authorization: 'Bearer mock-rd-token' }, timeout: 15000
             });
         });
 

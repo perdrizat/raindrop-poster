@@ -29,6 +29,7 @@ describe('POST /api/publish', () => {
         const { setSetting } = await import('../services/db.js');
         await setSetting('BUFFER_ACCESS_TOKEN', '');
         await setSetting('BUFFER_PROFILE_ID', '');
+        await setSetting('BUFFER_CHANNELS', '');
     });
 
     it('should fail if text is missing', async () => {
@@ -83,6 +84,37 @@ describe('POST /api/publish', () => {
         expect(response.body.message).toMatch(/Published to 2 channel/i);
         // 1 GetChannels + 2 createPost
         expect(axios.post).toHaveBeenCalledTimes(3);
+    });
+
+    it('reuses stored Buffer channel services and skips the extra GetChannels call', async () => {
+        process.env.BUFFER_ACCESS_TOKEN = 'mock-buffer-token';
+        process.env.BUFFER_PROFILE_ID = 'mock-profile-id';
+        const { setSetting } = await import('../services/db.js');
+        await setSetting('BUFFER_CHANNELS', JSON.stringify([
+            { id: 'colombia', service: 'twitter', name: 'CO' },
+            { id: 'argentina', service: 'bluesky', name: 'AR' },
+        ]));
+
+        axios.post.mockResolvedValue({
+            data: { data: { createPost: { __typename: 'PostActionSuccess', post: { id: 'p1' } } } }
+        });
+
+        const testApp = express();
+        testApp.use(express.json());
+        testApp.use('/api/publish', publishRoutes);
+
+        const response = await request(testApp)
+            .post('/api/publish')
+            .send({
+                text: 'short',
+                articleUrl: 'https://example.com',
+                destination: 'buffer',
+                targetChannels: ['colombia', 'argentina']
+            });
+
+        expect(response.status).toBe(200);
+        // No GetChannels lookup — only the 2 createPost calls.
+        expect(axios.post).toHaveBeenCalledTimes(2);
     });
 
     it('should upload imageData to R2 before posting to Buffer', async () => {

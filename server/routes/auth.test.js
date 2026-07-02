@@ -140,12 +140,12 @@ describe('Auth Routes', () => {
             });
             expect(axios.post).toHaveBeenCalledWith('https://api.buffer.com/1/graphql', expect.objectContaining({
                 query: expect.stringContaining('query GetChannels')
-            }), {
+            }), expect.objectContaining({
                 headers: {
                     Authorization: 'Bearer mock_buffer_token',
                     'Content-Type': 'application/json'
                 }
-            });
+            }));
         });
     });
 

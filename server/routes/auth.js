@@ -57,9 +57,11 @@ router.get('/buffer/test', async (req, res) => {
         }
 
         console.log('Buffer API → GetChannels');
+        // Connectivity check — fail fast (no retry/backoff) so it can't hold a
+        // client connection through several seconds of retries on page load.
         const data = await bufferGraphql(token, CHANNELS_QUERY, {
             input: { organizationId: profileId }
-        });
+        }, { retries: 0 });
 
         if (data.errors) {
             console.error(`Buffer API ✗ GetChannels: ${data.errors[0].message}`);

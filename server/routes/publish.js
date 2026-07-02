@@ -1,5 +1,5 @@
 import express from 'express';
-import { getConfig, trackPostImage } from '../services/db.js';
+import { getConfig, getSetting, trackPostImage } from '../services/db.js';
 import { uploadImage } from '../services/imageHostService.js';
 import { bufferGraphql, CHANNELS_QUERY } from '../services/bufferService.js';
 import { CHAR_LIMITS, SHORTENED_URL_LEN, URL_SHORTENED_SERVICES } from '../../shared/platformLimits.js';
@@ -27,16 +27,31 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'No target channels selected for Buffer.' });
         }
 
-        // Fetch channel metadata to enforce per-platform character limits before posting.
-        // Limits mirror the client (PostPage) exactly via shared/platformLimits.js: total
-        // budget per platform, with the article URL weighted at a fixed 23 chars for
-        // services that shorten URLs. Threads counts the full text.
+        // Build channelId→service for per-platform char-limit validation. Limits mirror
+        // the client (PostPage) via shared/platformLimits.js: total budget per platform,
+        // article URL weighted at a fixed 23 chars for services that shorten URLs; Threads
+        // counts the full text. The channels saved at setup (BUFFER_CHANNELS) are already
+        // enriched with `service`, so we reuse them and skip an extra Buffer API call on
+        // every publish (Buffer rate-limits bursts). Fall back to a live lookup only when
+        // the stored map is missing/empty (legacy config).
         const urlShortenedServices = new Set(URL_SHORTENED_SERVICES);
-        const channelsData = await bufferGraphql(bufferAccessToken, CHANNELS_QUERY, {
-            input: { organizationId: bufferProfileId }
-        });
-        const allChannels = channelsData?.data?.channels || [];
-        const channelServiceMap = Object.fromEntries(allChannels.map(ch => [ch.id, ch.service]));
+        let channelServiceMap = {};
+        try {
+            const stored = JSON.parse((await getSetting('BUFFER_CHANNELS')) || '[]');
+            channelServiceMap = Object.fromEntries(
+                (Array.isArray(stored) ? stored : [])
+                    .filter(c => c && c.id && c.service)
+                    .map(c => [c.id, c.service])
+            );
+        } catch { /* fall back to the API lookup below */ }
+
+        if (Object.keys(channelServiceMap).length === 0) {
+            const channelsData = await bufferGraphql(bufferAccessToken, CHANNELS_QUERY, {
+                input: { organizationId: bufferProfileId }
+            });
+            const allChannels = channelsData?.data?.channels || [];
+            channelServiceMap = Object.fromEntries(allChannels.map(ch => [ch.id, ch.service]));
+        }
 
         // Pre-validate effective text length against all target channels
         const violations = [];
