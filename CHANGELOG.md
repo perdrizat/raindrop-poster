@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- Extract the repeated empty-state card markup in PostPage into a local `EmptyState` component (No Tag Selected / Empty Queue).
+- Simplify App view routing: drop the `initialViewWasDefault` one-shot flag by suppressing the history-sync effect until init completes and deriving the initial view from the pathname directly.
+- Clean up the per-run vitest temp `DATA_DIR` on process exit so throwaway dirs no longer accumulate in the OS temp dir.
+
 ## [1.2.2] - 2026-07-02
 
 ### Added

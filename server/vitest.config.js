@@ -3,14 +3,20 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+// Tests write settings through the default getDb(), which falls back to
+// process.cwd() when DATA_DIR is unset — clobbering the developer's
+// server/raindrop.sqlite. Point it at a throwaway temp dir instead (guarded by
+// services/db-isolation.test.js), and remove it when the run's process exits so
+// these don't accumulate in the OS temp dir across runs.
+const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'raindrop-vitest-'));
+process.on('exit', () => {
+    try { fs.rmSync(testDataDir, { recursive: true, force: true }); } catch { /* best effort */ }
+});
+
 export default defineConfig({
     test: {
         env: {
-            // Tests write settings through the default getDb(), which falls back to
-            // process.cwd() when DATA_DIR is unset — clobbering the developer's
-            // server/raindrop.sqlite. Point it at a throwaway temp dir instead
-            // (guarded by services/db-isolation.test.js).
-            DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'raindrop-vitest-')),
+            DATA_DIR: testDataDir,
         },
         exclude: [
             ...configDefaults.exclude,

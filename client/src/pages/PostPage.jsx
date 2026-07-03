@@ -228,6 +228,23 @@ const ImageCard = ({ id, label, imageSrc, isLoading, error, onRetry, onRegenerat
     );
 };
 
+// Centered card for the "nothing to show" states (no tag selected, empty queue).
+// The action renders as a link when `actionHref` is given, otherwise a button.
+const EMPTY_STATE_CTA = 'inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700';
+const EmptyState = ({ title, body, actionLabel, actionHref, onAction }) => (
+    <div className="space-y-8 animate-fade-in w-full">
+        <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 sm:p-8 transition-colors duration-300">
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">{title}</h3>
+                <p className="text-gray-500 dark:text-gray-400 mb-6">{body}</p>
+                {actionHref
+                    ? <a href={actionHref} className={EMPTY_STATE_CTA}>{actionLabel}</a>
+                    : <button onClick={onAction} className={EMPTY_STATE_CTA}>{actionLabel}</button>}
+            </div>
+        </section>
+    </div>
+);
+
 // selectedTag/postingObjectives arrive from the server via App (/api/system/status).
 // Don't read them from localStorage here: it's per-origin, so a reverse-proxy
 // hostname and a direct IP would silently use different settings.
@@ -680,20 +697,12 @@ const PostPage = ({ selectedTag, postingObjectives }) => {
     // isLoading would stay true and the page would show "Loading articles..." forever.
     if (!selectedTag) {
         return (
-            <div className="space-y-8 animate-fade-in w-full">
-                <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 sm:p-8 transition-colors duration-300">
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
-                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No Tag Selected</h3>
-                        <p className="text-gray-500 dark:text-gray-400 mb-6">Pick the Raindrop.io tag to publish from in the Setup wizard.</p>
-                        <a
-                            href="/setup"
-                            className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                        >
-                            Open Setup
-                        </a>
-                    </div>
-                </section>
-            </div>
+            <EmptyState
+                title="No Tag Selected"
+                body="Pick the Raindrop.io tag to publish from in the Setup wizard."
+                actionLabel="Open Setup"
+                actionHref="/setup"
+            />
         );
     }
 
@@ -711,20 +720,12 @@ const PostPage = ({ selectedTag, postingObjectives }) => {
 
     if (articles.length === 0) {
         return (
-            <div className="space-y-8 animate-fade-in w-full">
-                <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 sm:p-8 transition-colors duration-300">
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
-                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Empty Queue</h3>
-                        <p className="text-gray-500 dark:text-gray-400 mb-6">No articles found for tag "{selectedTag}".</p>
-                        <button
-                            onClick={loadArticles}
-                            className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                        >
-                            Reload Raindrops
-                        </button>
-                    </div>
-                </section>
-            </div>
+            <EmptyState
+                title="Empty Queue"
+                body={`No articles found for tag "${selectedTag}".`}
+                actionLabel="Reload Raindrops"
+                onAction={loadArticles}
+            />
         );
     }
 

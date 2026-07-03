@@ -17,14 +17,6 @@ const formatBuildTime = (raw) => {
 
 function App() {
   const settings = loadSettings()
-  // True when the initial view was a mere default (no explicit path, no local tag)
-  // — the one case the server's selectedTag may upgrade to the Queue below.
-  // Captured as lazy state: it must reflect the URL at mount, before the
-  // activeView effect rewrites window.location.pathname.
-  const [initialViewWasDefault] = useState(() => {
-    const path = window.location.pathname;
-    return path !== '/setup' && path !== '/queue' && !settings.selectedTag;
-  })
   const [activeView, setActiveView] = useState(() => {
     const path = window.location.pathname;
     if (path === '/setup') return 'setup';
@@ -49,10 +41,15 @@ function App() {
         });
         if (!status.isConfigured) {
           setActiveView('setup');
-        } else if (initialViewWasDefault && status.selectedTag) {
-          // Fresh origin (empty localStorage) but the server knows the tag:
-          // land on the Queue like any other configured origin.
-          setActiveView('publish');
+        } else if (status.selectedTag) {
+          // No explicit route chosen (not /setup or /queue) but the server knows
+          // the tag: land on the Queue. Reading the pathname here is safe because
+          // the history-sync effect below is suppressed until init completes, so
+          // it hasn't been rewritten yet. Idempotent if we're already on 'publish'.
+          const path = window.location.pathname;
+          if (path !== '/setup' && path !== '/queue') {
+            setActiveView('publish');
+          }
         }
       } catch (error) {
         console.error("Failed to check system status:", error);
@@ -64,10 +61,12 @@ function App() {
 
     // Trigger cleanup check in background (runs only if >6h since last check)
     fetch('/api/cleanup/trigger').catch(() => {});
-    // initialViewWasDefault is set-once lazy state — inert in deps, listed for exhaustive-deps
-  }, [initialViewWasDefault]);
+  }, []);
 
   React.useEffect(() => {
+    // Don't touch history until the real view is known — otherwise the mount-time
+    // default would rewrite the URL before the server status resolves.
+    if (isInitializing) return;
     if (isSystemConfigured === false) {
       // Enforcement: never allow leaving setup if system is unconfigured
       if (activeView !== 'setup') setActiveView('setup');
@@ -76,7 +75,7 @@ function App() {
     if (window.location.pathname !== path) {
       window.history.pushState(null, '', path);
     }
-  }, [activeView, isSystemConfigured]);
+  }, [activeView, isSystemConfigured, isInitializing]);
 
   if (isInitializing) {
     return (
