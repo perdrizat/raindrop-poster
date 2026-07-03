@@ -31,4 +31,14 @@ echo "(docker save needs ~10s before the transfer counter appears)"
   | dd bs=4M status=progress \
   | ssh "$DEPLOY_TARGET" "sudo -S -p '' docker load"
 echo ""
-echo "Done. Restart the app via the TrueNAS Web UI."
+
+# A running container is pinned to an image ID, not a tag — loading a new :latest
+# is not enough, the app must be redeployed (recreated) to adopt it. TrueNAS
+# exposes that as the middleware call app.redeploy.
+APP_NAME="${DEPLOY_APP_NAME:-raindrop-poster}"
+echo "Redeploying app '$APP_NAME' on $DEPLOY_TARGET…"
+if { echo "$SUDO_PASS"; } | ssh "$DEPLOY_TARGET" "sudo -S -p '' midclt call app.redeploy $APP_NAME" >/dev/null; then
+  echo "Done. App redeployed with the new image."
+else
+  echo "Redeploy call failed — recreate manually: TrueNAS UI → Apps → $APP_NAME → Edit → Save."
+fi

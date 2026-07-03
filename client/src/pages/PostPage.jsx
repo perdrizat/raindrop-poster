@@ -228,7 +228,10 @@ const ImageCard = ({ id, label, imageSrc, isLoading, error, onRetry, onRegenerat
     );
 };
 
-const PostPage = ({ selectedTag }) => {
+// selectedTag/postingObjectives arrive from the server via App (/api/system/status).
+// Don't read them from localStorage here: it's per-origin, so a reverse-proxy
+// hostname and a direct IP would silently use different settings.
+const PostPage = ({ selectedTag, postingObjectives }) => {
     const [articles, setArticles] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [currentIndex, setCurrentIndex] = useState(parseHashIndex);
@@ -408,8 +411,7 @@ const PostPage = ({ selectedTag }) => {
         setGenerationError(null);
         setProposals([]);
         try {
-            const settings = loadSettings();
-            const customPrompt = settings.postingObjectives || 'Create engaging posts.';
+            const customPrompt = postingObjectives || 'Create engaging posts.';
             const charBudget = computeMaxPostLen(bufferChannels, !!article.link);
             const results = await generateProposals(article, customPrompt, signal, charBudget);
             if (signal?.aborted) return;
@@ -440,7 +442,7 @@ const PostPage = ({ selectedTag }) => {
         } finally {
             if (!signal?.aborted) setIsGenerating(false);
         }
-    }, [captureScreenshot, bufferChannels]);
+    }, [captureScreenshot, bufferChannels, postingObjectives]);
 
     // Load new bookmark: cancel prior, reset state, fire fresh requests
     useEffect(() => {
@@ -648,8 +650,7 @@ const PostPage = ({ selectedTag }) => {
             const result = await publishPost(fullText, currentArticle.link, { imageData, coverUrl }, 'buffer', bufferChannelIds, bufferMode);
 
             let tagWarning = null;
-            const settings = loadSettings();
-            const tag = settings.selectedTag;
+            const tag = selectedTag;
             if (tag && currentArticle._id && currentArticle.tags) {
                 const newTags = currentArticle.tags
                     .filter(t => t !== tag)
@@ -674,6 +675,27 @@ const PostPage = ({ selectedTag }) => {
             setIsPublishing(false);
         }
     };
+
+    // Must precede the isLoading gate: without a tag no fetch ever starts, so
+    // isLoading would stay true and the page would show "Loading articles..." forever.
+    if (!selectedTag) {
+        return (
+            <div className="space-y-8 animate-fade-in w-full">
+                <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6 sm:p-8 transition-colors duration-300">
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No Tag Selected</h3>
+                        <p className="text-gray-500 dark:text-gray-400 mb-6">Pick the Raindrop.io tag to publish from in the Setup wizard.</p>
+                        <a
+                            href="/setup"
+                            className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                        >
+                            Open Setup
+                        </a>
+                    </div>
+                </section>
+            </div>
+        );
+    }
 
     if (isLoading) {
         return (

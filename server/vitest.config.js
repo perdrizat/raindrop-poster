@@ -1,7 +1,17 @@
 import { defineConfig, configDefaults } from 'vitest/config';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 export default defineConfig({
     test: {
+        env: {
+            // Tests write settings through the default getDb(), which falls back to
+            // process.cwd() when DATA_DIR is unset — clobbering the developer's
+            // server/raindrop.sqlite. Point it at a throwaway temp dir instead
+            // (guarded by services/db-isolation.test.js).
+            DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'raindrop-vitest-')),
+        },
         exclude: [
             ...configDefaults.exclude,
             '**/*.e2e.test.*',      // E2E tests requiring real APIs & Puppeteer

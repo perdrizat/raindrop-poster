@@ -276,18 +276,8 @@
 <a name='L211'></a><a href='#L211'>211</a>
 <a name='L212'></a><a href='#L212'>212</a>
 <a name='L213'></a><a href='#L213'>213</a>
-<a name='L214'></a><a href='#L214'>214</a>
-<a name='L215'></a><a href='#L215'>215</a>
-<a name='L216'></a><a href='#L216'>216</a>
-<a name='L217'></a><a href='#L217'>217</a>
-<a name='L218'></a><a href='#L218'>218</a>
-<a name='L219'></a><a href='#L219'>219</a>
-<a name='L220'></a><a href='#L220'>220</a>
-<a name='L221'></a><a href='#L221'>221</a>
-<a name='L222'></a><a href='#L222'>222</a>
-<a name='L223'></a><a href='#L223'>223</a>
-<a name='L224'></a><a href='#L224'>224</a>
-<a name='L225'></a><a href='#L225'>225</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L214'></a><a href='#L214'>214</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -326,6 +316,12 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -341,25 +337,7 @@
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -516,6 +494,7 @@ import crypto from 'crypto';
 import axios from 'axios';
 import { getSetting, setSetting, getConfig } from '../services/db.js';
 import { testConnection } from '../services/imageHostService.js';
+import { bufferGraphql, CHANNELS_QUERY } from '../services/bufferService.js';
 &nbsp;
 const router = express.Router();
 &nbsp;
@@ -544,11 +523,17 @@ function getFrontendRedirectUrl(req) {
 &nbsp;
 // --- GET CURRENT SESSION STATUS ---
 router.get('/status', async (req, res) =&gt; {
+    const [raindropToken, venice, buffer, r2] = await Promise.all([
+        getSetting('RAINDROPIO_ACCESS_TOKEN'),
+        getConfig('VENICE_API_KEY'),
+        getConfig('BUFFER_ACCESS_TOKEN'),
+        getConfig('R2_ACCOUNT_ID'),
+    ]);
     res.json({
-        raindropio: !!(req.session.raindropio || await getSetting('RAINDROPIO_ACCESS_TOKEN')),
-        venice: !!(await getConfig('VENICE_API_KEY')),
-        buffer: !!(await getConfig('BUFFER_ACCESS_TOKEN')),
-        r2: !!(await getConfig('R2_ACCOUNT_ID')),
+        raindropio: !!(req.session.raindropio || raindropToken),
+        venice: !!venice,
+        buffer: !!buffer,
+        r2: !!r2,
     });
 });
 &nbsp;
@@ -562,37 +547,19 @@ router.get('/buffer/test', async (req, res) =&gt; {
             return res.status(401).json({ error: 'Not authenticated with Buffer' });
         }
 &nbsp;
-        const query = `
-            query GetChannels($input: ChannelsInput!) {
-                channels(input: $input) {
-                    id
-                    service
-                    name
-                }
-            }
-        `;
-&nbsp;
         console.log('Buffer API → GetChannels');
-        const response = await axios.post('https://api.buffer.com/1/graphql', {
-            query,
-            variables: {
-                input: {
-                    organizationId: profileId
-                }
-            }
-        }, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
-        });
+        // Connectivity check — fail fast (no retry/backoff) so it can't hold a
+        // client connection through several seconds of retries on page load.
+        const data = await bufferGraphql(token, CHANNELS_QUERY, {
+            input: { organizationId: profileId }
+        }, { retries: 0 });
 &nbsp;
-        <span class="missing-if-branch" title="if path not taken" >I</span>if (response.data.errors) {
-<span class="cstat-no" title="statement not covered" >            console.error(`Buffer API ✗ GetChannels: ${response.data.errors[0].message}`);</span>
-<span class="cstat-no" title="statement not covered" >            return res.status(502).json({ error: response.data.errors[0].message });</span>
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (data.errors) {
+<span class="cstat-no" title="statement not covered" >            console.error(`Buffer API ✗ GetChannels: ${data.errors[0].message}`);</span>
+<span class="cstat-no" title="statement not covered" >            return res.status(502).json({ error: data.errors[0].message });</span>
         }
 &nbsp;
-        const channels = response.data.data.channels;
+        const channels = data.data.channels;
         const services = [...new Set(channels.map(ch =&gt; ch.service))];
         console.log(`Buffer API ✓ ${channels.length} channels on ${services.join(', ')}`);
         res.json({
@@ -742,7 +709,7 @@ export default router;
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-06-12T12:07:49.335Z
+                at 2026-07-03T17:59:14.943Z
             </div>
         <script src="../prettify.js"></script>
         <script>

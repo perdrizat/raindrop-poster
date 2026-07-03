@@ -74,9 +74,11 @@ docker compose build && docker compose up -d        # Local: build & run on port
 
 pnpm release                                        # Bump version (pnpm version patch)
 pnpm build                                          # Build image: raindrop-poster:<version> + :latest
-pnpm deploy:remote                                  # Stream both tags to TrueNAS over SSH
-# …then restart the app in the TrueNAS UI (TrueNAS recreates the container
-# on app restart, so it picks up the new :latest image).
+pnpm deploy:remote                                  # Stream both tags to TrueNAS over SSH,
+# then auto-redeploy the app (midclt call app.redeploy) so the recreated container
+# adopts the new :latest — a running container is pinned to an image ID, not a tag.
+# App name defaults to raindrop-poster; override with DEPLOY_APP_NAME in .env.
+# If the redeploy call fails: TrueNAS UI → Apps → raindrop-poster → Edit → Save.
 ```
 
 **Versioning policy:**

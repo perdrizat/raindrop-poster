@@ -9,7 +9,7 @@
     "test": "pnpm -C client test && pnpm -C server test",
     "test:e2e": "pnpm -C server test:e2e",
     "lint": "pnpm -C client lint && pnpm -C server lint",
-    "build": "docker build -t raindrop-poster:$(node -p \"require('./package.json').version\") -t raindrop-poster:latest .",
+    "build": "docker build --build-arg BUILD_TIME=\"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\" -t raindrop-poster:$(node -p \"require('./package.json').version\") -t raindrop-poster:latest .",
     "release": "pnpm version patch",
     "deploy:remote": "./scripts/deploy-remote.sh"
   },

@@ -6,8 +6,25 @@ import BufferQuotaBanner from './components/BufferQuotaBanner'
 import { loadSettings } from './services/settingsService'
 import { getSystemStatus } from './services/systemService'
 
+// BUILD_TIME is baked as ISO-8601 UTC at image build; show it in the viewer's
+// local timezone. Older images baked a plain local "YYYY-MM-DD HH:MM" string —
+// anything unparseable is shown as-is rather than as "Invalid Date".
+const formatBuildTime = (raw) => {
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  return isNaN(parsed.getTime()) ? raw : parsed.toLocaleString();
+}
+
 function App() {
   const settings = loadSettings()
+  // True when the initial view was a mere default (no explicit path, no local tag)
+  // — the one case the server's selectedTag may upgrade to the Queue below.
+  // Captured as lazy state: it must reflect the URL at mount, before the
+  // activeView effect rewrites window.location.pathname.
+  const [initialViewWasDefault] = useState(() => {
+    const path = window.location.pathname;
+    return path !== '/setup' && path !== '/queue' && !settings.selectedTag;
+  })
   const [activeView, setActiveView] = useState(() => {
     const path = window.location.pathname;
     if (path === '/setup') return 'setup';
@@ -16,14 +33,26 @@ function App() {
   })
   const [isSystemConfigured, setIsSystemConfigured] = useState(true); // Assume true initially to prevent flash of setup
   const [isInitializing, setIsInitializing] = useState(true);
+  // Workflow settings from the server (SQLite) — the source of truth. localStorage
+  // is per-origin, so a reverse-proxy hostname and a direct IP would otherwise
+  // drift apart, each origin holding its own selectedTag/postingObjectives.
+  const [workflow, setWorkflow] = useState(null);
 
   React.useEffect(() => {
     const checkSystemStatus = async () => {
       try {
         const status = await getSystemStatus();
         setIsSystemConfigured(status.isConfigured);
+        setWorkflow({
+          selectedTag: status.selectedTag || '',
+          postingObjectives: status.postingObjectives || '',
+        });
         if (!status.isConfigured) {
           setActiveView('setup');
+        } else if (initialViewWasDefault && status.selectedTag) {
+          // Fresh origin (empty localStorage) but the server knows the tag:
+          // land on the Queue like any other configured origin.
+          setActiveView('publish');
         }
       } catch (error) {
         console.error("Failed to check system status:", error);
@@ -35,7 +64,8 @@ function App() {
 
     // Trigger cleanup check in background (runs only if >6h since last check)
     fetch('/api/cleanup/trigger').catch(() => {});
-  }, []);
+    // initialViewWasDefault is set-once lazy state — inert in deps, listed for exhaustive-deps
+  }, [initialViewWasDefault]);
 
   React.useEffect(() => {
     if (isSystemConfigured === false) {
@@ -79,7 +109,7 @@ function App() {
           {(import.meta.env.VITE_APP_VERSION || import.meta.env.VITE_BUILD_TIME) && (
             <span 
               className="hidden sm:block text-xs text-gray-400 dark:text-gray-500 font-mono"
-              title={import.meta.env.VITE_BUILD_TIME ? `Built: ${import.meta.env.VITE_BUILD_TIME}` : undefined}
+              title={import.meta.env.VITE_BUILD_TIME ? `Built: ${formatBuildTime(import.meta.env.VITE_BUILD_TIME)}` : undefined}
             >
               v{import.meta.env.VITE_APP_VERSION || 'dev'}
             </span>
@@ -109,7 +139,10 @@ function App() {
         {activeView === 'setup' && <SetupPage />}
 
         {activeView === 'publish' && (
-          <PostPage selectedTag={settings.selectedTag} />
+          <PostPage
+            selectedTag={workflow?.selectedTag || settings.selectedTag}
+            postingObjectives={workflow?.postingObjectives || settings.postingObjectives}
+          />
         )}
       </main>
       </div>

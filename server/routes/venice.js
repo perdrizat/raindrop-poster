@@ -226,6 +226,12 @@ ${articleText}
 // anything under this threshold is treated as a failed render and retried.
 const MIN_VALID_IMAGE_B64_LEN = 100 * 1024;
 const MAX_IMAGE_ATTEMPTS = 5;
+// Blank/black renders came back with the request echoing "steps":0 (no denoising),
+// while good renders ran for ~39s. Venice's own constraint for gpt-image-1-5 is
+// steps {default: 20, max: 50} (per /models?type=image, checked 2026-07-03), so the
+// blanks were Venice's default-resolution failing to 0 intermittently. Sending the
+// documented default explicitly bypasses that broken path.
+const IMAGE_INFERENCE_STEPS = 20;
 
 const requestVeniceImage = async (apiKey, prompt) => {
     const startedAt = Date.now();
@@ -234,6 +240,7 @@ const requestVeniceImage = async (apiKey, prompt) => {
         prompt,
         width: 1024,
         height: 1024,
+        steps: IMAGE_INFERENCE_STEPS,
         format: 'png',
         return_binary: false,
         hide_watermark: true,
@@ -279,8 +286,11 @@ router.post('/generate-image', async (req, res) => {
             }
             const bytes = b64.length;
             const kb = Math.round(bytes / 1024);
+            // Resolved step count Venice actually used — the confirming/refuting signal
+            // for the blank-image root cause (blanks came back with steps=0).
+            const resolvedSteps = meta?.request?.data?.steps;
             if (bytes >= MIN_VALID_IMAGE_B64_LEN) {
-                console.log(`[Venice.ai] <-- Image generated (${kb}KB base64, ${durationMs}ms, attempt ${attempt}/${MAX_IMAGE_ATTEMPTS})`);
+                console.log(`[Venice.ai] <-- Image generated (${kb}KB base64, ${durationMs}ms, steps=${resolvedSteps}, attempt ${attempt}/${MAX_IMAGE_ATTEMPTS})`);
                 return res.json({ imageData: `data:image/png;base64,${b64}`, attempts: attempt, blankCount });
             }
             blankCount++;

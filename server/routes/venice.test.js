@@ -464,6 +464,32 @@ describe('Venice API Routes', () => {
             );
         });
 
+        // Blanks correlate with Venice resolving the request to steps:0 (no denoising).
+        // We send an explicit non-zero step count so it can't default to a blank render.
+        it('sends an explicit non-zero steps in the image payload', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            axios.post.mockResolvedValueOnce({ data: { images: [REAL_IMAGE_B64] } });
+
+            await request(app).post('/api/venice/generate-image').send({ prompt: 'Anything' });
+
+            const payload = axios.post.mock.calls[0][1];
+            expect(payload.steps).toBeGreaterThan(0);
+        });
+
+        it('logs the resolved step count on a successful render (blank-diagnosis signal)', async () => {
+            process.env.VENICE_API_KEY = 'mock-key';
+            const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+            axios.post.mockResolvedValueOnce({
+                data: { images: [REAL_IMAGE_B64], request: { data: { steps: 20 } } },
+            });
+
+            await request(app).post('/api/venice/generate-image').send({ prompt: 'Anything' });
+
+            const successLine = logSpy.mock.calls.map(c => c[0]).find(l => /Image generated/.test(l));
+            expect(successLine).toMatch(/steps=20/);
+            logSpy.mockRestore();
+        });
+
         it('should return 502 when Venice image API errors', async () => {
             process.env.VENICE_API_KEY = 'mock-key';
             axios.post.mockRejectedValueOnce(new Error('Venice image API down'));

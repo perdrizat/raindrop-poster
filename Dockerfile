@@ -16,10 +16,14 @@ COPY client/ ./client/
 COPY shared/ ./shared/
 # Add this so it doesn't fail if we have memory limits during build
 ENV NODE_OPTIONS=--max_old_space_size=4096
-# Stamp the build time so the UI can display it. date runs at build time,
-# giving the exact minute docker compose build was initiated.
-RUN echo "VITE_BUILD_TIME=$(date +'%Y-%m-%d %H:%M')" >> /app/client/.env
-RUN node -p "'VITE_APP_VERSION=' + require('./package.json').version" >> /app/client/.env
+# Stamp build metadata for the UI badge. BUILD_TIME arrives as a build arg
+# (see package.json "build") so it is evaluated per build, not per cache layer —
+# a server-only rebuild previously reused this layer and shipped a stale "Built:"
+# date. The ARG sits after the COPYs so only the stamp + vite compile re-run on a
+# cache-warm build; deps stay cached. Single overwrite (>) keeps the file
+# deterministic — no duplicate entries can accumulate.
+ARG BUILD_TIME
+RUN printf 'VITE_BUILD_TIME=%s\nVITE_APP_VERSION=%s\n' "$BUILD_TIME" "$(node -p "require('./package.json').version")" > /app/client/.env
 RUN pnpm -C client build
 
 # Stage 2: Setup the production Node server with Puppeteer

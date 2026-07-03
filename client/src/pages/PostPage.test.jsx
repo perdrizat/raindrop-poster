@@ -1613,3 +1613,56 @@ describe('PostPage — publishing + overlay', () => {
         expect(screen.getByRole('button', { name: /^now$/i })).toBeDisabled();
     });
 });
+
+// Settings arrive as props from the server (via App); localStorage is per-origin
+// and must not be authoritative — accessing the app through a reverse proxy is a
+// different origin with empty localStorage (2026-07-03 nginx queue bug).
+describe('PostPage — server-backed settings & empty-tag state', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        window.localStorage.clear();
+        window.history.replaceState(null, '', window.location.pathname);
+        generateProposals.mockResolvedValue({ proposals: [], author: null, scrapeData: null });
+        updateBookmarkTags.mockResolvedValue(true);
+        publishPost.mockResolvedValue({ success: true, url: 'https://buffer.com/abc' });
+        globalThis.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ imageData: null }),
+        });
+    });
+
+    it('shows an explicit no-tag state (not eternal loading) when selectedTag is empty', async () => {
+        render(<PostPage selectedTag="" />);
+
+        expect(await screen.findByText(/no tag selected/i)).toBeInTheDocument();
+        // A way out: link to Setup where the tag is chosen
+        expect(screen.getByRole('link', { name: /setup/i })).toHaveAttribute('href', '/setup');
+        // The old failure mode: stuck on the loading spinner with no fetch in flight
+        expect(screen.queryByText(/loading articles/i)).not.toBeInTheDocument();
+        expect(fetchTaggedItems).not.toHaveBeenCalled();
+    });
+
+    it('generates proposals with the postingObjectives prop even when localStorage is empty', async () => {
+        fetchTaggedItems.mockResolvedValueOnce(mockArticles);
+
+        render(<PostPage selectedTag="important" postingObjectives="Speak like a pirate" />);
+
+        await waitFor(() => expect(generateProposals).toHaveBeenCalled());
+        expect(generateProposals.mock.calls[0][1]).toBe('Speak like a pirate');
+    });
+
+    it('retags the bookmark <tag>_posted after publish using the selectedTag prop, not localStorage', async () => {
+        const article = { ...mockArticles[0], tags: ['important', 'keep'] };
+        fetchTaggedItems.mockResolvedValueOnce([article]);
+
+        render(<PostPage selectedTag="important" />);
+        const textarea = await screen.findByLabelText(/^post$/i);
+        await userEvent.type(textarea, 'Hello');
+        await userEvent.click(screen.getByRole('button', { name: /drafts/i }));
+
+        // localStorage is empty — the prop must drive the rename or bookmarks
+        // silently stay in the queue after publishing (the worse half of the bug).
+        await waitFor(() =>
+            expect(updateBookmarkTags).toHaveBeenCalledWith(1, ['keep', 'important_posted']));
+    });
+});

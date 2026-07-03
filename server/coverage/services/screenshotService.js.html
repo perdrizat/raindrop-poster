@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">40.69% </span>
+                <span class="strong">41.24% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>105/258</span>
+                <span class='fraction'>106/257</span>
             </div>
         
             
@@ -37,16 +37,16 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">18.18% </span>
+                <span class="strong">19.04% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>8/44</span>
+                <span class='fraction'>8/42</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">44.39% </span>
+                <span class="strong">44.84% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>99/223</span>
+                <span class='fraction'>100/223</span>
             </div>
         
             
@@ -686,8 +686,12 @@
 <a name='L621'></a><a href='#L621'>621</a>
 <a name='L622'></a><a href='#L622'>622</a>
 <a name='L623'></a><a href='#L623'>623</a>
-<a name='L624'></a><a href='#L624'>624</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L624'></a><a href='#L624'>624</a>
+<a name='L625'></a><a href='#L625'>625</a>
+<a name='L626'></a><a href='#L626'>626</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1129,7 +1133,7 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -1312,6 +1316,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { acquireBrowser, releaseBrowser } from './scraperService.js';
 import { findQuoteInDOM } from './highlighter.js';
 &nbsp;
+const <span class="fstat-no" title="function not covered" >delay = (m</span>s) =&gt; <span class="cstat-no" title="statement not covered" >new <span class="fstat-no" title="function not covered" >Promise((r</span>esolve) =&gt; <span class="cstat-no" title="statement not covered" >setTimeout(resolve, ms))</span>;</span>
+&nbsp;
 /**
  * Wraps article HTML in a styled shell for local rendering.
  */
@@ -1401,13 +1407,13 @@ export const captureQuoteScreenshot = async (articleHtml, articleUrl, quoteText,
             // networkidle0 waits for all images to finish loading so the layout
             // is stable before we measure scrollHeight.
             await page.setContent(styledHtml, { waitUntil: 'networkidle0', timeout: 30000 })
-                .catch(<span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >p</span>age.setContent(styledHtml, { waitUntil: 'load' }))</span>;
+                .<span class="fstat-no" title="function not covered" >catch(() =&gt; <span class="cstat-no" title="statement not covered" >p</span>age.setContent(styledHtml, { waitUntil: 'load' }))</span>;
 &nbsp;
             // Expand the viewport to the fully-loaded document height so that
             // findQuoteInDOM measurements are taken against the stable final layout.
             // Using a very large initial viewport (50000px) and then clamping avoids
             // a second reflow caused by expanding the viewport after layout is done.
-            const initialScrollHeight = await page.evaluate(<span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >d</span>ocument.documentElement.scrollHeight)</span>;
+            const initialScrollHeight = await page.<span class="fstat-no" title="function not covered" >evaluate(() =&gt; <span class="cstat-no" title="statement not covered" >d</span>ocument.documentElement.scrollHeight)</span>;
             const stableHeight = Math.max(initialScrollHeight, 8000);
             await page.setViewport({
                 width: 390,
@@ -1451,10 +1457,10 @@ export const captureQuoteScreenshot = async (articleHtml, articleUrl, quoteText,
             }
 &nbsp;
             // Auto-accept Usercentrics consent
-            await page.evaluateOnNewDocument(<span class="fstat-no" title="function not covered" >() =&gt; {</span>
+            await page.<span class="fstat-no" title="function not covered" >evaluateOnNewDocument(() =&gt; {</span>
                 let _UC_UI, _ucCmp;
-                const autoAccept = <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >(a</span>pi) =&gt; {</span>
-                    const run = <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >() =&gt; {</span> <span class="cstat-no" title="statement not covered" >try { <span class="cstat-no" title="statement not covered" >api.acceptAllConsents(); }</span> catch (e) {} }</span>;</span>
+                const <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >autoAccept = (a</span>pi) =&gt; {</span>
+                    const <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >run = () =&gt; {</span> <span class="cstat-no" title="statement not covered" >try { <span class="cstat-no" title="statement not covered" >api.acceptAllConsents(); }</span> catch (e) {} }</span>;</span>
 <span class="cstat-no" title="statement not covered" >                    setTimeout(run, 50);</span>
 <span class="cstat-no" title="statement not covered" >                    setTimeout(run, 500);</span>
 <span class="cstat-no" title="statement not covered" >                    setTimeout(run, 1500);</span>
@@ -1462,18 +1468,18 @@ export const captureQuoteScreenshot = async (articleHtml, articleUrl, quoteText,
 <span class="cstat-no" title="statement not covered" >                try {</span>
 <span class="cstat-no" title="statement not covered" >                    Object.defineProperty(window, 'UC_UI', {</span>
                         configurable: true,
-                        get: <span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >_</span>UC_UI,</span>
-                        set: <span class="fstat-no" title="function not covered" >(v</span>al) =&gt; { <span class="cstat-no" title="statement not covered" >_UC_UI = val; <span class="cstat-no" title="statement not covered" >a</span>utoAccept(val); }</span>
+<span class="fstat-no" title="function not covered" >                        get: () =&gt; <span class="cstat-no" title="statement not covered" >_</span>UC_UI,</span>
+<span class="fstat-no" title="function not covered" >                        set: (v</span>al) =&gt; { <span class="cstat-no" title="statement not covered" >_UC_UI = val; <span class="cstat-no" title="statement not covered" >a</span>utoAccept(val); }</span>
                     });
 <span class="cstat-no" title="statement not covered" >                    Object.defineProperty(window, '__ucCmp', {</span>
                         configurable: true,
-                        get: <span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >_</span>ucCmp,</span>
-                        set: <span class="fstat-no" title="function not covered" >(v</span>al) =&gt; { <span class="cstat-no" title="statement not covered" >_ucCmp = val; <span class="cstat-no" title="statement not covered" >a</span>utoAccept(val); }</span>
+<span class="fstat-no" title="function not covered" >                        get: () =&gt; <span class="cstat-no" title="statement not covered" >_</span>ucCmp,</span>
+<span class="fstat-no" title="function not covered" >                        set: (v</span>al) =&gt; { <span class="cstat-no" title="statement not covered" >_ucCmp = val; <span class="cstat-no" title="statement not covered" >a</span>utoAccept(val); }</span>
                     });
                 } catch (e) {}
 &nbsp;
 <span class="cstat-no" title="statement not covered" >                try {</span>
-                    const obs = <span class="cstat-no" title="statement not covered" >new MutationObserver(<span class="fstat-no" title="function not covered" >() =&gt; {</span></span>
+                    const obs = <span class="cstat-no" title="statement not covered" >new <span class="fstat-no" title="function not covered" >MutationObserver(() =&gt; {</span></span>
 <span class="cstat-no" title="statement not covered" >                        for (const el of document.querySelectorAll('*')) {</span>
 <span class="cstat-no" title="statement not covered" >                            if (!el.shadowRoot) <span class="cstat-no" title="statement not covered" >continue;</span></span>
                             const btn = <span class="cstat-no" title="statement not covered" >el.shadowRoot.querySelector(</span>
@@ -1487,7 +1493,7 @@ export const captureQuoteScreenshot = async (articleHtml, articleUrl, quoteText,
             });
 &nbsp;
             await page.setRequestInterception(true);
-            page.on('request', <span class="fstat-no" title="function not covered" >req =&gt; {</span>
+            page.on(<span class="fstat-no" title="function not covered" >'request', r</span>eq =&gt; {
                 const reqUrl = <span class="cstat-no" title="statement not covered" >req.url();</span>
 <span class="cstat-no" title="statement not covered" >                try {</span>
                     const host = <span class="cstat-no" title="statement not covered" >new URL(reqUrl).hostname;</span>
@@ -1509,12 +1515,12 @@ export const captureQuoteScreenshot = async (articleHtml, articleUrl, quoteText,
 &nbsp;
             <span class="missing-if-branch" title="if path not taken" >I</span>if (process.env.NODE_ENV !== 'test') {
 <span class="cstat-no" title="statement not covered" >                await page.setViewport({ width: 390, height: 900, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });</span>
-<span class="cstat-no" title="statement not covered" >                await new Promise(<span class="fstat-no" title="function not covered" >resolve =&gt; <span class="cstat-no" title="statement not covered" >s</span>etTimeout(resolve, 2000))</span>;</span>
+<span class="cstat-no" title="statement not covered" >                await delay(2000);</span>
 <span class="cstat-no" title="statement not covered" >                await dismissPopups(page);</span>
-<span class="cstat-no" title="statement not covered" >                await new Promise(<span class="fstat-no" title="function not covered" >resolve =&gt; <span class="cstat-no" title="statement not covered" >s</span>etTimeout(resolve, 6000))</span>;</span>
+<span class="cstat-no" title="statement not covered" >                await delay(6000);</span>
 <span class="cstat-no" title="statement not covered" >                await dismissPopups(page);</span>
 <span class="cstat-no" title="statement not covered" >                await page.setViewport({ width: 390, height: 8000, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });</span>
-<span class="cstat-no" title="statement not covered" >                await new Promise(<span class="fstat-no" title="function not covered" >resolve =&gt; <span class="cstat-no" title="statement not covered" >s</span>etTimeout(resolve, 500))</span>;</span>
+<span class="cstat-no" title="statement not covered" >                await delay(500);</span>
             }
 &nbsp;
             findResult = await page.evaluate(findQuoteInDOM, quoteText);
@@ -1550,7 +1556,7 @@ export const captureQuoteScreenshot = async (articleHtml, articleUrl, quoteText,
                         console.warn(`[screenshot] Quote not found — retrying via ${fallback.name}`);
                         await page.goto(fallback.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
                         <span class="missing-if-branch" title="if path not taken" >I</span>if (process.env.NODE_ENV !== 'test') {
-<span class="cstat-no" title="statement not covered" >                            await new Promise(<span class="fstat-no" title="function not covered" >resolve =&gt; <span class="cstat-no" title="statement not covered" >s</span>etTimeout(resolve, 5000))</span>;</span>
+<span class="cstat-no" title="statement not covered" >                            await delay(5000);</span>
 <span class="cstat-no" title="statement not covered" >                            await dismissPopups(page);</span>
 <span class="cstat-no" title="statement not covered" >                            await hideArchiveToolbars(page);</span>
                         }
@@ -1567,12 +1573,12 @@ export const captureQuoteScreenshot = async (articleHtml, articleUrl, quoteText,
 &nbsp;
         // Step 2: Compute square padded clip region in Node (pure function, no browser context needed)
         const viewportWidth = 390;
-        const pageHeight = await page.evaluate(<span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >d</span>ocument.documentElement.scrollHeight)</span>;
+        const pageHeight = await page.<span class="fstat-no" title="function not covered" >evaluate(() =&gt; <span class="cstat-no" title="statement not covered" >d</span>ocument.documentElement.scrollHeight)</span>;
         const clip = computeClip(findResult, viewportWidth, pageHeight);
 &nbsp;
         // Step 3: Inject attribution bar at the bottom of the clip
         const attrText = formatAttribution(attribution);
-        await page.evaluate(<span class="fstat-no" title="function not covered" >(t</span>ext, clipBox) =&gt; {
+        await page.<span class="fstat-no" title="function not covered" >evaluate((t</span>ext, clipBox) =&gt; {
             const bar = <span class="cstat-no" title="statement not covered" >document.createElement('div');</span>
 <span class="cstat-no" title="statement not covered" >            bar.id = 'raindrop-attribution';</span>
 <span class="cstat-no" title="statement not covered" >            bar.textContent = text;</span>
@@ -1624,9 +1630,9 @@ export const captureQuoteScreenshot = async (articleHtml, articleUrl, quoteText,
         return screenshotBuffer;
     } catch (error) {
         console.error('Screenshot error:', error.stack);
-        throw new Error('Failed to capture screenshot');
+        throw new Error('Failed to capture screenshot', { cause: error });
     } finally {
-        <span class="missing-if-branch" title="else path not taken" >E</span>if (page) await page.close().catch(<span class="fstat-no" title="function not covered" >() =&gt; {</span>});
+        <span class="missing-if-branch" title="else path not taken" >E</span>if (page) await page.close().<span class="fstat-no" title="function not covered" >catch(() =&gt; {</span>});
         releaseBrowser(browser);
     }
 };
@@ -1638,7 +1644,7 @@ export const captureQuoteScreenshot = async (articleHtml, articleUrl, quoteText,
 async function <span class="fstat-no" title="function not covered" >dismissPopups(p</span>age) {
 <span class="cstat-no" title="statement not covered" >    try {</span>
         // Pass 1: click known dismiss/accept buttons
-<span class="cstat-no" title="statement not covered" >        await page.evaluate(<span class="fstat-no" title="function not covered" >() =&gt; {</span></span>
+<span class="cstat-no" title="statement not covered" >        await page.<span class="fstat-no" title="function not covered" >evaluate(() =&gt; {</span></span>
             const knownSelectors = <span class="cstat-no" title="statement not covered" >[</span>
                 // OneTrust
                 '#onetrust-accept-btn-handler',
@@ -1688,7 +1694,7 @@ async function <span class="fstat-no" title="function not covered" >dismissPopup
             const candidates = <span class="cstat-no" title="statement not covered" >[...document.querySelectorAll('button, [role="button"], a.btn, a.button')];</span>
 <span class="cstat-no" title="statement not covered" >            for (const btn of candidates) {</span>
                 const <span class="cstat-no" title="statement not covered" >label = (btn.textContent || btn.getAttribute('aria-label') || '').trim();</span>
-<span class="cstat-no" title="statement not covered" >                if (acceptPatterns.some(<span class="fstat-no" title="function not covered" >p =&gt; <span class="cstat-no" title="statement not covered" >p</span>.test(label))</span> &amp;&amp; btn.offsetParent !== null) {</span>
+<span class="cstat-no" title="statement not covered" >                if (acceptPatterns.<span class="fstat-no" title="function not covered" >some(p</span> =&gt; <span class="cstat-no" title="statement not covered" >p.test(label))</span> &amp;&amp; btn.offsetParent !== null) {</span>
 <span class="cstat-no" title="statement not covered" >                    btn.click();</span>
 <span class="cstat-no" title="statement not covered" >                    return;</span>
                 }
@@ -1696,7 +1702,7 @@ async function <span class="fstat-no" title="function not covered" >dismissPopup
         });
 &nbsp;
         // Brief pause for dismiss animations
-<span class="cstat-no" title="statement not covered" >        await new Promise(<span class="fstat-no" title="function not covered" >r =&gt; <span class="cstat-no" title="statement not covered" >s</span>etTimeout(r, 800))</span>;</span>
+<span class="cstat-no" title="statement not covered" >        await new <span class="fstat-no" title="function not covered" >Promise(r</span> =&gt; <span class="cstat-no" title="statement not covered" >setTimeout(r, 800))</span>;</span>
 &nbsp;
         // Pass 2: Dismiss shadow DOM consent managers (e.g. Usercentrics on swissinfo.ch).
         // Strategy A: call the Usercentrics public JS API if available.
@@ -1705,15 +1711,15 @@ async function <span class="fstat-no" title="function not covered" >dismissPopup
         //             any JS event handling quirks with programmatic .click()).
 <span class="cstat-no" title="statement not covered" >        try {</span>
             // Strategy A — Usercentrics public API
-<span class="cstat-no" title="statement not covered" >            await page.evaluate(<span class="fstat-no" title="function not covered" >() =&gt; {</span></span>
+<span class="cstat-no" title="statement not covered" >            await page.<span class="fstat-no" title="function not covered" >evaluate(() =&gt; {</span></span>
 <span class="cstat-no" title="statement not covered" >                try { <span class="cstat-no" title="statement not covered" >if (window.UC_UI) <span class="cstat-no" title="statement not covered" >window.UC_UI.acceptAllConsents(); }</span></span> catch (e) {}</span>
 <span class="cstat-no" title="statement not covered" >                try { <span class="cstat-no" title="statement not covered" >if (window.__ucCmp) <span class="cstat-no" title="statement not covered" >window.__ucCmp.acceptAllConsents(); }</span></span> catch (e) {}</span>
-            }).catch(<span class="fstat-no" title="function not covered" >() =&gt; {</span>});
+            }).<span class="fstat-no" title="function not covered" >catch(() =&gt; {</span>});
 &nbsp;
             // Strategy B — direct .click() on the shadow DOM button.
             // Calling .click() from inside page.evaluate() has full shadow root access
             // (unlike page.mouse.click which uses viewport coordinates and can miss).
-            const shadowBtnCoords = <span class="cstat-no" title="statement not covered" >await page.evaluate(<span class="fstat-no" title="function not covered" >() =&gt; {</span></span>
+            const shadowBtnCoords = <span class="cstat-no" title="statement not covered" >await page.<span class="fstat-no" title="function not covered" >evaluate(() =&gt; {</span></span>
                 const selectors = <span class="cstat-no" title="statement not covered" >[</span>
                     '.uc-accept-button',
                     'button[data-action-type="accept"]',
@@ -1747,24 +1753,24 @@ async function <span class="fstat-no" title="function not covered" >dismissPopup
 <span class="cstat-no" title="statement not covered" >            if (shadowBtnCoords) {</span>
 <span class="cstat-no" title="statement not covered" >                console.log(`[dismissPopups] shadow-DOM consent button at (${shadowBtnCoords.x.toFixed(0)}, ${shadowBtnCoords.y.toFixed(0)})`);</span>
                 // Also fire a coordinate click as a backup (some CMP handlers need real pointer events)
-                const navPromise = <span class="cstat-no" title="statement not covered" >page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(<span class="fstat-no" title="function not covered" >() =&gt; {</span>});</span>
+                const navPromise = <span class="cstat-no" title="statement not covered" >page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).<span class="fstat-no" title="function not covered" >catch(() =&gt; {</span>});</span>
 <span class="cstat-no" title="statement not covered" >                await page.mouse.click(shadowBtnCoords.x, shadowBtnCoords.y);</span>
 <span class="cstat-no" title="statement not covered" >                await navPromise;</span>
                 // Wait for meaningful article body to be present (handles both full reload and SPA update)
-<span class="cstat-no" title="statement not covered" >                await page.waitForFunction(</span>
-<span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >                    () =&gt; (d</span>ocument.body.innerText || '').length &gt; 2000,</span>
+<span class="cstat-no" title="statement not covered" >                await page.<span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >waitForFunction(</span></span></span>
+                    () =&gt; (document.body.innerText || '').length &gt; 2000,
                     { timeout: 10000 }
-                ).catch(<span class="fstat-no" title="function not covered" >() =&gt; {</span>});
-<span class="cstat-no" title="statement not covered" >                await new Promise(<span class="fstat-no" title="function not covered" >r =&gt; <span class="cstat-no" title="statement not covered" >s</span>etTimeout(r, 2000))</span>;</span>
+                ).<span class="fstat-no" title="function not covered" >catch(() =&gt; {</span>});
+<span class="cstat-no" title="statement not covered" >                await new <span class="fstat-no" title="function not covered" >Promise(r</span> =&gt; <span class="cstat-no" title="statement not covered" >setTimeout(r, 2000))</span>;</span>
             }
         } catch (e) {
             // non-fatal
         }
 &nbsp;
-<span class="cstat-no" title="statement not covered" >        await new Promise(<span class="fstat-no" title="function not covered" >r =&gt; <span class="cstat-no" title="statement not covered" >s</span>etTimeout(r, 800))</span>;</span>
+<span class="cstat-no" title="statement not covered" >        await new <span class="fstat-no" title="function not covered" >Promise(r</span> =&gt; <span class="cstat-no" title="statement not covered" >setTimeout(r, 800))</span>;</span>
 &nbsp;
         // Pass 3: hide any remaining fixed/sticky overlays with high z-index
-<span class="cstat-no" title="statement not covered" >        await page.evaluate(<span class="fstat-no" title="function not covered" >() =&gt; {</span></span>
+<span class="cstat-no" title="statement not covered" >        await page.<span class="fstat-no" title="function not covered" >evaluate(() =&gt; {</span></span>
             // Hide by known banner class/id patterns
             const bannerSelectors = <span class="cstat-no" title="statement not covered" >[</span>
                 '[class*="cookie-banner"]', '[class*="cookiebanner"]',
@@ -1778,7 +1784,7 @@ async function <span class="fstat-no" title="function not covered" >dismissPopup
                 '#qc-cmp2-ui',
             ];
 <span class="cstat-no" title="statement not covered" >            for (const sel of bannerSelectors) {</span>
-<span class="cstat-no" title="statement not covered" >                document.querySelectorAll(sel).forEach(<span class="fstat-no" title="function not covered" >el =&gt; {</span></span>
+<span class="cstat-no" title="statement not covered" >                document.querySelectorAll(sel).<span class="fstat-no" title="function not covered" >forEach(e</span>l =&gt; {</span>
 <span class="cstat-no" title="statement not covered" >                    el.style.setProperty('display', 'none', 'important');</span>
                 });
             }
@@ -1819,7 +1825,7 @@ async function <span class="fstat-no" title="function not covered" >dismissPopup
  * so they don't appear in the screenshot or skew the clip coordinates.
  */
 async function <span class="fstat-no" title="function not covered" >hideArchiveToolbars(p</span>age) {
-<span class="cstat-no" title="statement not covered" >    await page.evaluate(<span class="fstat-no" title="function not covered" >() =&gt; {</span></span>
+<span class="cstat-no" title="statement not covered" >    await page.<span class="fstat-no" title="function not covered" >evaluate(() =&gt; {</span></span>
         const selectors = <span class="cstat-no" title="statement not covered" >[</span>
             '#wm-ipp-base',               // Wayback Machine toolbar
             '#wm-ipp',
@@ -1828,11 +1834,11 @@ async function <span class="fstat-no" title="function not covered" >hideArchiveT
             '#logo-bar',                  // archive.ph logo
         ];
 <span class="cstat-no" title="statement not covered" >        for (const sel of selectors) {</span>
-<span class="cstat-no" title="statement not covered" >            document.querySelectorAll(sel).forEach(<span class="fstat-no" title="function not covered" >el =&gt; {</span></span>
+<span class="cstat-no" title="statement not covered" >            document.querySelectorAll(sel).<span class="fstat-no" title="function not covered" >forEach(e</span>l =&gt; {</span>
 <span class="cstat-no" title="statement not covered" >                el.style.setProperty('display', 'none', 'important');</span>
             });
         }
-    }).catch(<span class="fstat-no" title="function not covered" >() =&gt; {</span>});
+    }).<span class="fstat-no" title="function not covered" >catch(() =&gt; {</span>});
 }
 &nbsp;
 /**
@@ -1939,7 +1945,7 @@ export { formatAttribution };
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-06-12T12:07:49.335Z
+                at 2026-07-03T17:59:14.943Z
             </div>
         <script src="../prettify.js"></script>
         <script>
