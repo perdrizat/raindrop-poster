@@ -1010,7 +1010,10 @@ describe('PostPage — image options panel', () => {
         expect(screen.queryByTestId('ai-retry-notice')).toBeNull();
     });
 
-    it('shows a floating notice to check logs when Venice needed blank-image retries', async () => {
+    // Blank-image retries are a transient upstream Venice fault the retry loop
+    // absorbs; the user gets a good image and shouldn't be nagged about it.
+    // Server-side [Venice.ai][blank] logging still captures request IDs for Venice.
+    it('does not surface a user notice even when Venice needed blank-image retries', async () => {
         fetchTaggedItems.mockResolvedValueOnce(mockArticles);
         globalThis.fetch = vi.fn().mockImplementation(async (url) => {
             if (url === '/api/venice/generate-image') {
@@ -1024,9 +1027,13 @@ describe('PostPage — image options panel', () => {
         await switchToImages();
         await userEvent.click(screen.getByTestId('image-option-ai'));
 
-        const notice = await screen.findByTestId('ai-retry-notice');
-        expect(notice).toHaveTextContent(/2 blank images/i);
-        expect(notice).toHaveTextContent(/logs/i);
+        // The AI image still lands...
+        await waitFor(() => {
+            const card = screen.getByTestId('image-option-ai');
+            expect(card.querySelector('img')?.getAttribute('src')).toContain('AID');
+        });
+        // ...but no retry toast is shown.
+        expect(screen.queryByTestId('ai-retry-notice')).toBeNull();
     });
 
     it('AI image prompt includes the Venice-provided imageContext as scene context', async () => {

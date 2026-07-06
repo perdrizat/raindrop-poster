@@ -221,16 +221,17 @@ ${articleText}
     }
 });
 
-// Venice intermittently returns a blank (all-black) image that comes back tiny
-// (~29KB base64) instead of the real >1MB render. Size is a reliable signal:
-// anything under this threshold is treated as a failed render and retried.
+// Venice intermittently returns a blank (all-black) image — a canned PNG that
+// always arrives at exactly 29492 bytes base64, vs the real >1MB render. Size is
+// a reliable signal: anything under this threshold is a failed render and retried.
 const MIN_VALID_IMAGE_B64_LEN = 100 * 1024;
 const MAX_IMAGE_ATTEMPTS = 5;
-// Blank/black renders came back with the request echoing "steps":0 (no denoising),
-// while good renders ran for ~39s. Venice's own constraint for gpt-image-1-5 is
-// steps {default: 20, max: 50} (per /models?type=image, checked 2026-07-03), so the
-// blanks were Venice's default-resolution failing to 0 intermittently. Sending the
-// documented default explicitly bypasses that broken path.
+// Venice's documented default for gpt-image-1-5 (steps {default: 20, max: 50} per
+// /models?type=image, checked 2026-07-03). Sent explicitly for clarity — NOT a fix
+// for the blank-image bug: on 2026-07-06 a blank still occurred with steps=20, so
+// the earlier steps:0 in blank echoes was a *symptom* of the fast-fail path (which
+// skips normal defaulting), not the cause. See requestVeniceImage for the real
+// signature; the retry loop is the accepted mitigation.
 const IMAGE_INFERENCE_STEPS = 20;
 
 const requestVeniceImage = async (apiKey, prompt) => {
@@ -274,10 +275,13 @@ router.post('/generate-image', async (req, res) => {
 
         console.log(`[Venice.ai] --> Image generation: "${prompt.slice(0, 80)}..."`);
 
-        // The retry loop is a stopgap for an upstream bug (Venice intermittently
-        // returns a blank/black image). The `[Venice.ai][blank]` diagnostics below
-        // exist so we can gather data and root-cause it — do not remove them when
-        // the loop is eventually replaced by a real fix.
+        // Retry loop for a confirmed upstream Venice bug: it intermittently returns
+        // a canned all-black PNG (always exactly 29492 bytes) from a fast-fail path —
+        // ~3s inferenceDuration vs ~39s for a real render — with success:true. It is
+        // random, not prompt-related: the identical prompt succeeds on retry, so it
+        // cannot be content moderation. Not fixable our side. Keep the
+        // `[Venice.ai][blank]` logging: the request `id` it prints is what a Venice
+        // support report needs.
         let blankCount = 0;
         for (let attempt = 1; attempt <= MAX_IMAGE_ATTEMPTS; attempt++) {
             const { b64, durationMs, meta } = await requestVeniceImage(apiKey, prompt);
@@ -286,8 +290,8 @@ router.post('/generate-image', async (req, res) => {
             }
             const bytes = b64.length;
             const kb = Math.round(bytes / 1024);
-            // Resolved step count Venice actually used — the confirming/refuting signal
-            // for the blank-image root cause (blanks came back with steps=0).
+            // Resolved step count Venice echoes back — logged for the record; not
+            // load-bearing (blanks occur regardless of its value, see IMAGE_INFERENCE_STEPS).
             const resolvedSteps = meta?.request?.data?.steps;
             if (bytes >= MIN_VALID_IMAGE_B64_LEN) {
                 console.log(`[Venice.ai] <-- Image generated (${kb}KB base64, ${durationMs}ms, steps=${resolvedSteps}, attempt ${attempt}/${MAX_IMAGE_ATTEMPTS})`);

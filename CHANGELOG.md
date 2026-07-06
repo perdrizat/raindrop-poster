@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Removed
+- Dropped the floating "Venice returned N blank images" retry notice: the blank-image fault is a transient upstream Venice bug the retry loop absorbs silently, so it no longer nags the user. Server-side `[Venice.ai][blank]` logging (with request IDs for a Venice report) is unchanged.
+
 ### Changed
 - Extract the repeated empty-state card markup in PostPage into a local `EmptyState` component (No Tag Selected / Empty Queue).
 - Simplify App view routing: drop the `initialViewWasDefault` one-shot flag by suppressing the history-sync effect until init completes and deriving the initial view from the pathname directly.

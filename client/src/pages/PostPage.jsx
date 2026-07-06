@@ -283,9 +283,6 @@ const PostPage = ({ selectedTag, postingObjectives }) => {
     const [imageContext, setImageContext] = useState('');
     const [isGeneratingAi, setIsGeneratingAi] = useState(false);
     const [aiError, setAiError] = useState(null);
-    // Set when Venice returned one or more blank images before succeeding — a nudge
-    // to check the server logs (see the `[Venice.ai][blank]` diagnostics).
-    const [aiRetryNotice, setAiRetryNotice] = useState(null);
 
     // Custom image
     const [customImageData, setCustomImageData] = useState(null);
@@ -565,7 +562,6 @@ const PostPage = ({ selectedTag, postingObjectives }) => {
     const generateAiImage = async () => {
         setIsGeneratingAi(true);
         setAiError(null);
-        setAiRetryNotice(null);
         try {
             const response = await fetch('/api/venice/generate-image', {
                 method: 'POST',
@@ -579,9 +575,9 @@ const PostPage = ({ selectedTag, postingObjectives }) => {
             const data = await response.json();
             setAiImageData(data.imageData);
             setSelectedImageOption('ai');
-            if (data.blankCount > 0) {
-                setAiRetryNotice(`Venice returned ${data.blankCount} blank image${data.blankCount > 1 ? 's' : ''} before this one (${data.attempts} attempts). Check the server logs — this is a known upstream issue we're tracking.`);
-            }
+            // Blank-image retries (data.blankCount) are absorbed silently — the retry
+            // loop already recovered; the server logs the [Venice.ai][blank] request
+            // IDs for the upstream report. No user-facing notice by design.
         } catch (err) {
             if (err?.name === 'AbortError') return;
             setAiError('Could not generate AI image.');
@@ -1052,23 +1048,6 @@ const PostPage = ({ selectedTag, postingObjectives }) => {
                 />
             )}
 
-            {aiRetryNotice && (
-                <div
-                    role="status"
-                    data-testid="ai-retry-notice"
-                    className="fixed bottom-4 right-4 z-50 max-w-sm rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/80 shadow-lg p-3 flex items-start gap-2"
-                >
-                    <span className="text-amber-600 dark:text-amber-400 font-bold shrink-0" aria-hidden="true">~</span>
-                    <p className="text-xs text-amber-800 dark:text-amber-200 leading-relaxed">{aiRetryNotice}</p>
-                    <button
-                        onClick={() => setAiRetryNotice(null)}
-                        aria-label="Dismiss notice"
-                        className="shrink-0 text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200 font-bold leading-none"
-                    >
-                        ×
-                    </button>
-                </div>
-            )}
         </div>
     );
 };
