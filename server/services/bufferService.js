@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BUFFER_GRAPHQL_URL = 'https://api.buffer.com/1/graphql';
+const BUFFER_GRAPHQL_URL = 'https://api.buffer.com/';
 
 /**
  * Buffer's GraphQL query for an organization's connected channels. Requests the

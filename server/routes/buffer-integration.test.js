@@ -31,7 +31,7 @@ describe.skip('Live Buffer Integration Test', () => {
         `;
         let channelId;
         try {
-            const resChannels = await axios.post('https://api.buffer.com/1/graphql', {
+            const resChannels = await axios.post('https://api.buffer.com/', {
                 query: channelQuery,
                 variables: { input: { organizationId: process.env.BUFFER_PROFILE_ID } }
             }, {

@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-07-09
+
+### Fixed
+- Updated Buffer API GraphQL endpoint from `https://api.buffer.com/1/graphql` to `https://api.buffer.com/` as the former was deprecated and returns HTTP 404.
+
 ### Removed
 - Dropped the floating "Venice returned N blank images" retry notice: the blank-image fault is a transient upstream Venice bug the retry loop absorbs silently, so it no longer nags the user. Server-side `[Venice.ai][blank]` logging (with request IDs for a Venice report) is unchanged.
 

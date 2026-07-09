@@ -138,7 +138,7 @@ describe('Auth Routes', () => {
                 channelCount: 2,
                 services: 'twitter, linkedin',
             });
-            expect(axios.post).toHaveBeenCalledWith('https://api.buffer.com/1/graphql', expect.objectContaining({
+            expect(axios.post).toHaveBeenCalledWith('https://api.buffer.com/', expect.objectContaining({
                 query: expect.stringContaining('query GetChannels')
             }), expect.objectContaining({
                 headers: {
