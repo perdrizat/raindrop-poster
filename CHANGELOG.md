@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2026-08-19]
+
+### Changed
+- Bump patch/minor dependencies within existing semver ranges (react, react-dom, vitest, vite, eslint, axios, @aws-sdk/client-s3, connect-sqlite3, eslint-plugin-react-refresh, and others); `sqlite3`, `tailwindcss`, `jsdom`, `@testing-library/jest-dom`, and `puppeteer` held back deliberately (see CONTRIBUTING.md).
+
 ## [1.2.3] - 2026-07-09
 
 ### Fixed
